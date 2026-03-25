@@ -271,6 +271,23 @@ endif
 
 This works for any directive that takes an expression — `if`, `elseif`, `list`, `switch`, `return`, assignments, etc.
 
+### Line continuation with `\`
+
+A backslash `\` at the end of a line continues the statement on the next line. This is an alternative to parentheses for splitting long lines:
+
+```
+local s = ("#define " + name + " ")?right_pad(align) + \
+          default
+
+if longConditionA && \
+   longConditionB && \
+   longConditionC
+  emit "all true\n"
+endif
+```
+
+Both `()` and `\` can be used — choose whichever reads better in context.
+
 ### list
 
 ```

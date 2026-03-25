@@ -271,4 +271,27 @@ public class CodeFirstDirectiveTest {
         model.put("x", 10);
         assertEquals("", processCodeFirst("if x >= 10\nendif\n", model));
     }
+
+    @Test
+    public void testBackslashLineContinuation() throws Exception {
+        // Assignment with line continuation
+        assertEquals("hello world",
+                processCodeFirst("x = \"hello\" + \\\n\" world\"\nemit x\n"));
+    }
+
+    @Test
+    public void testBackslashLineContinuationInIf() throws Exception {
+        Map<String, Object> model = new HashMap<>();
+        model.put("a", true);
+        model.put("b", true);
+        assertEquals("yes",
+                processCodeFirst("if a && \\\nb\n  emit \"yes\"\nendif\n", model));
+    }
+
+    @Test
+    public void testBackslashLineContinuationMultiple() throws Exception {
+        // Multiple continuations
+        assertEquals("6",
+                processCodeFirst("x = 1 + \\\n2 + \\\n3\nemit x?c\n"));
+    }
 }

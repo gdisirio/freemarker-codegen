@@ -1744,6 +1744,12 @@ TOKEN:
     < ~[] >
 }
 
+// Line continuation: backslash followed by newline is ignored in code-first mode
+<CODE_FIRST> SKIP :
+{
+    < "\\" ("\n" | "\r\n" | "\r") >
+}
+
 <CODE_FIRST> TOKEN :
 {
     <CF_EOL : "\n" | "\r\n" | "\r">
