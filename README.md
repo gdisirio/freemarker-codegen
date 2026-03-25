@@ -831,16 +831,6 @@ emit "A long comment that needs to be wrapped at a reasonable width"?wrap(40, "/
 | 2 | string | yes | Prefix for the first line |
 | 3 | string | no | Prefix for subsequent lines (default: same as first) |
 
-**Use case** — replacing manual word-wrapping functions. The `?wrap` built-in does what `FormatStringAsText` does in a single call:
-
-```
-// Before (manual function call):
-utils.FormatStringAsText(" * @brief ", " *          ", text, 80)
-
-// After (built-in):
-emit text?wrap(80, " * @brief ", " *          ")
-```
-
 ---
 
 ## Complete Example
