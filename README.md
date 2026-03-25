@@ -1,254 +1,554 @@
-Apache FreeMarker™ {version}
-============================
+# FreeMarker Code-First Mode
 
-[![Build status](https://github.com/apache/freemarker/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/freemarker/actions/workflows/ci.yml)
-![GraalVM Ready](https://img.shields.io/badge/GraalVM-Ready-orange)
+Code-first mode inverts FreeMarker's default behavior: **logic is the default** and text output requires explicit delimiters. This is designed for use cases where FreeMarker is used as a code generation language rather than a document template processor.
 
-For the latest version or to report bugs visit:
-https://freemarker.apache.org/
+All changes are isolated to the parser/lexer layer. No new AST node types are introduced — all code-first syntax maps to existing FreeMarker internals. Existing `.ftl` files and behavior are completely unchanged.
 
+---
 
-Regarding pull requests on Github
----------------------------------
+## Activation
 
-By sending a pull request you grant the Apache Software Foundation
-sufficient rights to use and release the submitted work under the
-Apache license. You grant the same rights (copyright license, patent
-license, etc.) to the Apache Software Foundation as if you have signed
-a [Contributor License Agreement](https://www.apache.org/dev/new-committers-guide.html#cla).
-For contributions that are judged to be non-trivial, you will be asked
-to actually signing a Contributor License Agreement.
+Code-first mode can be activated in three ways:
 
+### 1. File extension `.ftlc`
 
-What is Apache FreeMarker™?
----------------------------
+Any template loaded with a `.ftlc` extension automatically uses code-first mode:
 
-Apache FreeMarker™ is a "template engine"; a generic tool to generate
-text output (anything from HTML to auto generated source code) based on
-templates. It's a Java package, a class library for Java programmers.
-It's not an application for end-users in itself, but something that
-programmers can embed into their products. FreeMarker is designed to
-be practical for the generation of HTML Web pages, particularly by
-servlet-based applications following the MVC (Model View Controller)
-pattern.
-
-
-Licensing
----------
-
-FreeMarker is licensed under the Apache License, Version 2.0.
-
-See the `LICENSE` file for more details!
-
-
-Documentation
--------------
-
-Online: https://freemarker.apache.org/docs/
-
-Offline: The full documentation is available in the binary distribution
-in the documentation/index.html directory.
-
-
-Installing
-----------
-
-If you are using Maven, just add this dependency:
-
-```xml
-  <!--
-  Attention: Be sure nothing pulls in an old dependency with groupId
-  "freemarker" (without the "org."), because then you will end up with
-  two freemarker.jar-s and unpredictable behavior on runtime!
-  -->
-  <dependency>
-    <groupId>org.freemarker</groupId>
-    <artifactId>freemarker-gae</artifactId>
-    <version>{version}</version>
-  </dependency>
+```java
+Template t = cfg.getTemplate("generate.ftlc");
 ```
 
-Otherwise, simply copy `freemarker.jar` to a location where your Java
-application's `ClassLoader` will find it. For example, if you are using
-FreeMarker in a web application, you probably want to put
-`freemarker.jar` into the `WEB-INF/lib` directory of your web application.
+### 2. Header directive in any `.ftl` file
 
-FreeMarker has no required dependencies. It has several optional
-dependencies, but usually you don't have to deal with them, because if
-you are using an optional feature that's certainly because your
-application already uses the related library.
+Add a `syntax` parameter to the `<#ftl>` header. The header itself uses classic FTL syntax; code-first mode activates immediately after it:
 
-Attention: If you upgrade to OpenJDK 9 or later, and you are using
-XPath queries in templates, you will need to add Apache Xalan as a
-dependency, as `freemarker.ext.dom` can't use the XPath support
-included in OpenJDK anymore. It's not needed on Oracle Java 9,
-or if FreeMarker is configured to use Jaxen for XPath.
+```
+<#ftl syntax="code-first">
+emit "Hello from code-first mode"
+```
 
-The minimum required Java version is currently Java SE 8. (The presence
-of a later version is detected on runtime and utilized by FreeMarker
-automatically.)
+### 3. Configuration flag
 
+Enable code-first mode for all templates loaded through a `Configuration`:
 
-Change log
-----------
+```java
+Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
+cfg.setCodeFirstMode(true);
+```
 
-Online (for stable releases only):
-https://freemarker.apache.org/docs/app_versions.html
+Or per-template via `TemplateConfiguration`:
 
-Offline:
-In the binary release, open `documentation/index.html`, and you will find the
-link.
+```java
+TemplateConfiguration tc = new TemplateConfiguration();
+tc.setCodeFirstMode(true);
+```
 
+---
 
-Building FreeMarker
--------------------
+## Interoperability
 
-If you haven't yet, download the source release, or checkout FreeMarker from
-the source code repository. See repository locations here:
-https://freemarker.apache.org/sourcecode.html
+`.ftl` and `.ftlc` files can freely import and include each other. Each file is parsed independently with its own parser mode. Both modes produce identical AST nodes, so there is no runtime difference:
 
-You need JDK 8, JDK 16, and JDK 17 (only for some tests) to be installed
-(and [visible to Gradle](https://docs.gradle.org/current/userguide/toolchains.html)).
-That's because different parts of the source code target different Java versions,
-and Gradle requires the exact JDK version (not higher) for each.
+```
+// In a .ftlc file:
+import "utils.ftl" as u
+```
 
-Be sure that your default Java version (which Gradle should use automatically) is at
-least 17!
+```ftl
+<#-- In a .ftl file: -->
+<#import "generator.ftlc" as gen>
+```
 
-If you are building from the official source *release* (not from source that you
-got from Git), `gradle/wrapper/gradle-wrapper.jar` is missing from that, and you
-have to add it yourself! You can download it
-[from GitHub source code page](https://github.com/apache/freemarker/tree/2.3-gae/gradle/wrapper)!
-(Or, use your own Gradle installation instead of `gradlew`.)
+---
 
-To build `freemarker.jar`, just issue `./gradlew jar` (`gradlew.bat jar` on Windows) in the
-project root directory, and it should download all dependencies automatically, and build
-`freemarker.jar`.
+## Comments
 
-To run all JUnit tests and some other checks, issue `./gradlew check`. (Avoid the
-`test` task, as that will only run the tests of the `core` source set.)
+```
+// This is a single-line comment
 
-To generate offline documentation, issue `./gradlew javadoc` and `./gradlew manualOffline`.
+/* This is a
+   multi-line block comment */
+```
 
-To build the distribution artifacts (the `tgz`-s that people can download), run `./gradlew build`. However,
-for a stable (non-`SNAPSHOT`) version number, you must set up signing, or disable that verification
-with `freemarker.allowUnsignedReleaseBuild=true`; see `gradle.properties` in this project for those!
+Block comments are **not nestable** (C/Java semantics).
 
-Reproducible builds: If the resulting `freemarker.jar` is not identical with the official jar, see the build environment
-in the `.buildinfo` file packed into the official source distribution, and also into the Maven "sources" artifact! At
-least with identical Java versions, the resulting `freemarker.jar` meant to match exactly.
+---
 
-Note on trying things out with an ad-hoc class that has `main` method: Don't do that, instead write it as a JUnit test.
-FreeMarker needs to be loaded from `freemarker.jar` that contains the `META-INF/versions` directory (as per JEP 238,
-Multi-Release JAR Files). If you run a test, Gradle ensures that you have an up-to-date `freemarker.jar`, and
-that it's in the classpath. Without that, FreeMarker will behave as if you are on a lower Java version.
+## Text Output: `emit`
 
+In code-first mode, text is not output by default. Use the `emit` keyword to produce output.
 
-### Maven-related build tasks
+### Single expression
 
-To see how the project would be deployed to Maven Central, issue
-`./gradlew publishAllPublicationsToLocalRepository`,
-and check the `build/local-deployment` directory.
- 
-To publish to the Apache Maven Repository (from where you can also promote releases to the Maven Central Repository)
-issue `.\gradlew publish`. Note that for this the following Gradle properties must be properly set
-(in `gradle.properties`, or pass them via `-P<name>=<value>` arguments):
-`freemarker.signMethod`, `freemarker.deploy.apache.user`, `freemarker.deploy.apache.password`.
+`emit` followed by any expression outputs its value:
 
-### FreeMarker website related build tasks
+```
+emit "Hello, World!\n"
+emit x?c
+emit someFunction()
+```
 
-The website (the FreeMarker homepage) is build by the `freemarker-site` project, not this project (`freemaker`). Except,
-the Manual and the API documentation (javadoc) is generated in this project.
+String literals support interpolation with `${...}`:
 
-The online API documentation is the same as the offline one, generated with `./gradlew javadoc`. The output is uploaded
-manually into the `docs/api` directory of the website.
+```
+name = "Alice"
+emit "Hello, ${name}!\n"
+```
 
-The online Manual is generated with `./gradlew manualOnline`, and the output is uploaded manually into the `docs`
-directory of the webpage (without deleting `docs/api`). `manualOnline` requires Node.js to be already installed locally
-(see the `freemarker-docgen` project for the minimum version). Node.js is only used to generate the Pagefind index, and
-the output is purely static HTML. However, due to browser security restrictions, the search functionality will only work
-if you visit via HTTP(S), and not via a `file:` URL (so for local testing use `npx http-server`).
+### Text blocks with `"""`
 
+For multi-line output, use `emit """` to start a text block. The block ends at the next `"""`:
 
-IDE setup
----------
+```
+emit """
+<!DOCTYPE html>
+<html>
+  <head><title>${title}</title></head>
+  <body>${body}</body>
+</html>
+"""
+```
 
-### IntelliJ IDEA
+Text blocks support `${...}` interpolation just like string literals.
 
-Originally done on IntelliJ IDEA Community 2023.3.2:
+**Leading newline rule:** If `"""` is followed by only whitespace and then a newline, that first newline is stripped — the content starts from the next line. If content follows `"""` on the same line, it is emitted as-is:
 
-- "File" -> "Open": Select the "settings.gradle.kts" within the freemarker root directory.
-- If the project fails to load (or build), then adjust the following configuration
-  in "File" -> "Settings" -> "Build, Execution, Deployment" -> "Build Tools" -> "Gradle":
-  - Gradle JVM: JDK 17 (or higher)
-  - Build and run using: "Gradle"
-  - Run tests using: "Gradle"
+```
+// These produce identical output:
+emit """
+Hello!
+"""
 
-- "File" -> "Settings"
-  - Under "Editor" / "Code style", import and use
-    freemarker/src/ide-settings/IntelliJ-IDEA/Java-code-style-FreeMarker.xml
-  - Under "Editor" / "Inspections", import and use
-    freemarker/src/ide-settings/IntelliJ-IDEA/Editor-Inspections-FreeMarker.xml
-  - Copy the copyright header comment from some of the java files, then
-    under "Editor" / "Copyright" / "Copyright Profiles" click "+", enter "ASL2" as name,
-    then paste the copyright header. Delete the `/*` and ` */` lines, and the ` *`
-    prefixes (to select columns of text, hold Alt while selecting with the mouse.) Then
-    go back to "Copyright" in the tree, and set "Default project copyright" to "ASL2".
+emit """Hello!
+"""
+```
 
-### Eclipse
+This makes it natural to start the content on the line after `"""` without adding an unwanted leading newline.
 
-This section wasn't updated long ago. But you should import the project as any other
-Gradle project. After that, it's recommended to set these preferences (based on Eclipse Mars):
+### Choosing between forms
 
-- Window -> Preferences
-  - General -> Workspace, set the text file encoding
-    to "UTF-8". (Or, you can set the same later on project level instead.)
-  - General -> Editors -> Text Editors, set:
-    - Insert space for tabs
-    - Show print margin, 120 columns
-  - Java -> Code Style -> Formatter -> Import...
-    Select src\ide-settings\Eclipse\Formatter-profile-FreeMarker.xml
-    inside the FreeMarker project directory.
-    (On IntelliJ IDEA, import
-    src/ide-settings/IntelliJ-IDEA/Java-code-style-FreeMarker.xml instead)
-    This profile uses space-only indentation policy and 120 character line
-    width, and formatting rules that are pretty much standard in modern Java.
-  - Java -> Code Style -> Organize imports
-    (On IntelliJ IDEA, this was already configured by the Java code style
-    import earlier.)
-    The order is this (the Eclipse default): java, javax, org, com.
-    Number of imports required for .*: 99
-    Number of static imports needed for .*: 1
-  - Java -> Installed JRE-s:
-    Ensure that you have JDK 17 installed, and that it was added to Eclipse.
-    Note that it's not JRE, but JDK.
-  - Java -> Compiler -> Javadoc:
-    "Malformed Javadoc comments": Error
-    "Only consider members as visible": Private
-    "Validate tag arguments": true
-    "Missing tag descriptions": Validate @return tags
-    "Missing Javadoc tags": Ignore
-    "Missing Javadoc comments": Ignore
-- Import the project as any other Gradle project.
-- Eclipse will indicate many errors at this point; it's expected, read on.
-- Project -> Properties -> Java Compiler
-  - In Errors/Warnings, check in "Enable project specific settings", then set
-    "Forbidden reference (access rules)" from "Error" to "Warning".
-- At Project -> Properties -> Java Code Style -> Formatter, check in "Enable
-  project specific settings", and then select "FreeMarker" as active profile.
-- At Project -> Properties -> Java Editor -> Save Actions, check "Enable project
-  specific settings", then "Perform the selected actions on save", and have
-  only "Organize imports" and "Additional actions" checked (the list for the
-  last should contain "Add missing @Override annotations",
-  "Add missing @Override annotations to implementations of interface methods",
-  "Add missing @Deprecated annotations", and "Remove unnecessary cast").
-- Right-click on the project -> Run As -> JUnit Test
-  It should run without problems (all green).
-- It's highly recommended to use the Eclipse FindBugs plugin.
-  - Install it from Eclipse Marketplace (3.0.1 as of this writing)
-  - Window -> Preferences -> Java -> FindBugs:
-    Set all bug marker ranks from Warning to Error. (For false alarms we add
-    @SuppressFBWarnings(value = "...", justification = "...") annotations.)
-  - Project -> Properties -> FindBugs -> [x] Run Automatically
-  - There should 0 errors. But sometimes the plugin fails to take the
-    @SuppressFBWarnings annotations into account; then use Project -> Clean. 
+| Form | Use case |
+|---|---|
+| `emit expr` | Computed values, variables, function results |
+| `emit "..."` | Short single-line text with interpolation |
+| `emit """..."""` | Multi-line template blocks |
+
+---
+
+## Variables and Assignment
+
+Assignment uses bare `name = value` syntax. Scoping is automatic:
+
+- At template level: assigns to the current namespace (equivalent to `<#assign>`)
+- Inside a macro or function: assigns to local scope (equivalent to `<#local>`)
+
+```
+// Template level — namespace scope
+x = 1
+name = "World"
+items = ["a", "b", "c"]
+
+macro greet(who)
+  // Inside macro — local scope
+  greeting = "Hello, ${who}"
+  emit greeting
+/macro
+```
+
+### Explicit scope keywords
+
+Use `assign`, `local`, and `global` to explicitly control scope. This is especially useful inside macros and functions where bare assignment always goes to local scope:
+
+```
+macro compute()
+  local temp = heavyCalc()     // local to this call
+  assign result = temp * 2     // writes to template namespace
+  global cached = result       // writes to global scope
+endmacro
+```
+
+| Keyword | Scope | Equivalent classic FTL |
+|---|---|---|
+| *(bare)* | Auto: namespace at top level, local in macro/function | — |
+| `assign` | Current namespace | `<#assign>` |
+| `local` | Local (macro/function only) | `<#local>` |
+| `global` | Global | `<#global>` |
+
+### Compound assignment operators
+
+```
+x = 10
+x += 5
+x -= 2
+x *= 3
+x /= 4
+x %= 3
+x++
+x--
+```
+
+These work with all scope keywords: `assign x += 1`, `local count++`, `global total -= n`.
+
+---
+
+## Block Directives
+
+Block directives use keyword syntax with `/keyword` closers. Every closing tag also has an `end` alias — both styles can be used interchangeably:
+
+| Slash style | Keyword style |
+|---|---|
+| `/if` | `endif` |
+| `/list` | `endlist` |
+| `/macro` | `endmacro` |
+| `/function` | `endfunction` |
+| `/switch` | `endswitch` |
+| `/sep` | `endsep` |
+
+### if / elseif / else
+
+```
+if user.active
+  emit "Welcome back, ${user.name}!\n"
+elseif user.pending
+  emit "Your account is pending.\n"
+else
+  emit "Please register.\n"
+endif
+```
+
+Conditions are terminated by end-of-line. The `>` and `>=` operators work without parentheses (unlike classic mode):
+
+```
+if score > 90
+  emit "Excellent!\n"
+endif
+```
+
+### Multiline expressions
+
+Wrap the expression in `()` to span multiple lines. Inside parentheses, newlines are ignored:
+
+```
+if (longConditionA &&
+    longConditionB &&
+    longConditionC)
+  emit "all true\n"
+endif
+```
+
+This works for any directive that takes an expression — `if`, `elseif`, `list`, `switch`, `return`, assignments, etc.
+
+### list
+
+```
+list users as user
+  emit "${user.name}\n"
+endlist
+```
+
+With key-value iteration:
+
+```
+list settings as key, value
+  emit "${key} = ${value}\n"
+endlist
+```
+
+With `else` for empty lists:
+
+```
+list results as result
+  emit "${result}\n"
+else
+  emit "No results found.\n"
+endlist
+```
+
+### sep
+
+```
+list items as item
+  emit item
+  sep
+    emit ", "
+  endsep
+endlist
+// Output: a, b, c
+```
+
+### switch / case / default
+
+```
+switch color
+case "red"
+  emit "#FF0000"
+  break
+case "green"
+  emit "#00FF00"
+  break
+default
+  emit "#000000"
+endswitch
+```
+
+---
+
+## Macros and Functions
+
+### macro
+
+```
+macro page(title, body)
+  emit "<!DOCTYPE html>\n"
+  emit "<html><head><title>${title}</title></head>\n"
+  emit "<body>${body}</body></html>\n"
+endmacro
+
+page("Home", "Welcome!")
+```
+
+Parameters can have defaults:
+
+```
+macro button(label, type = "submit")
+  emit "<button type=\"${type}\">${label}</button>\n"
+endmacro
+
+button("Save")
+button("Cancel", "button")
+```
+
+### function
+
+```
+function max(a, b)
+  if (a > b)
+    return a
+  else
+    return b
+  endif
+endfunction
+
+emit max(10, 20)?c
+// Output: 20
+```
+
+### Calling macros and functions
+
+Use `name(args)` syntax:
+
+```
+greet("World")
+x = add(1, 2)
+```
+
+---
+
+## Control Flow
+
+### break and continue
+
+```
+list items as item
+  if item == "skip"
+    continue
+  endif
+  if item == "stop"
+    break
+  endif
+  emit "${item}\n"
+endlist
+```
+
+### return
+
+Inside a function, `return` provides the return value:
+
+```
+function double(n)
+  return n * 2
+endfunction
+```
+
+Inside a macro, `return` exits early:
+
+```
+macro conditionalGreet(name)
+  if !name?has_content
+    return
+  endif
+  emit "Hello, ${name}!\n"
+endmacro
+```
+
+---
+
+## import and include
+
+```
+import "lib/utils.ftl" as u
+include "header.ftl"
+```
+
+---
+
+## Hex Literals
+
+Hex integer literals are supported in **both** classic and code-first modes:
+
+```
+x = 0xFF        // 255
+y = 0x00FF00    // 65280
+color = 0xDEAD  // 57005
+```
+
+Values that fit in 32 bits produce `Integer`, larger values produce `Long`.
+
+---
+
+## Expressions
+
+Code-first mode supports the full FreeMarker expression language:
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- Logical: `&&`, `||`, `!`
+- String concatenation: `+`
+- Built-ins: `?c`, `?string`, `?size`, `?has_content`, etc.
+- Default values: `name!"default"`
+- Sequence literals: `["a", "b", "c"]`
+- Hash literals: `{"key": "value"}`
+- Method calls: `obj.method(args)`
+- Ranges: `0..10`, `0..<10`
+
+The `>` and `>=` operators work without parentheses (unlike classic mode where they conflict with the tag-closing `>`).
+
+### Bitwise operators (code-first only)
+
+Code-first mode adds bitwise operators, which are not available in classic FreeMarker:
+
+| Operator | Meaning | Example |
+|---|---|---|
+| `&` | Bitwise AND | `0xFF & 0x0F` → 15 |
+| `\|` | Bitwise OR | `0x0F \| 0xF0` → 255 |
+| `^` | Bitwise XOR | `0xFF ^ 0x0F` → 240 |
+| `~` | Bitwise NOT | `~0xFF` → -256 |
+| `<<` | Left shift | `1 << 8` → 256 |
+| `>>` | Right shift | `256 >> 8` → 1 |
+
+`&&` and `||` remain logical operators. The parser distinguishes single `&`/`|` (bitwise) from double `&&`/`||` (logical).
+
+Operator precedence follows C conventions (highest to lowest):
+
+1. `~` (unary bitwise NOT)
+2. `<<`, `>>` (shifts)
+3. `&` (bitwise AND)
+4. `^` (bitwise XOR)
+5. `|` (bitwise OR)
+6. `&&` (logical AND)
+7. `||` (logical OR)
+
+All bitwise operations work on the `long` representation of numbers. Results that fit in 32 bits are returned as `Integer`, otherwise as `Long`.
+
+Bitwise compound assignment operators are also supported:
+
+```
+flags = 0xFF
+flags &= 0x0F       // AND assign
+flags |= 0x80       // OR assign
+flags ^= 0x01       // XOR assign
+flags <<= 4         // left shift assign
+flags >>= 2         // right shift assign
+```
+
+Example — extracting color channels from an RGB value:
+
+```
+color = 0x1A803C
+red = (color >> 16) & 0xFF
+green = (color >> 8) & 0xFF
+blue = color & 0xFF
+emit "R=${red?c} G=${green?c} B=${blue?c}\n"
+// Output: R=26 G=128 B=60
+```
+
+---
+
+## Complete Example
+
+A code generator that produces a Java class from a data model:
+
+```
+// generate-entity.ftlc
+
+import "java-utils.ftl" as ju
+
+emit """
+package ${package};
+
+"""
+
+// Imports
+list imports as imp
+  emit "import ${imp};\n"
+endlist
+emit "\n"
+
+// Class declaration
+emit """
+public class ${className} {
+
+"""
+
+// Fields
+list fields as field
+  emit "    private ${field.type} ${field.name};\n"
+endlist
+emit "\n"
+
+// Getters and setters
+list fields as field
+  // Getter
+  emit """
+    public ${field.type} get${field.name?cap_first}() {
+        return this.${field.name};
+    }
+
+"""
+
+  // Setter
+  emit """
+    public void set${field.name?cap_first}(${field.type} ${field.name}) {
+        this.${field.name} = ${field.name};
+    }
+
+"""
+endlist
+
+emit "}\n"
+```
+
+---
+
+## Syntax Summary
+
+| Classic FTL | Code-First |
+|---|---|
+| `<#if cond>...</#if>` | `if cond`...`/if` or `endif` |
+| `<#list xs as x>...</#list>` | `list xs as x`...`/list` or `endlist` |
+| `<#macro m(a)>...</#macro>` | `macro m(a)`...`/macro` or `endmacro` |
+| `<#function f(a)>...</#function>` | `function f(a)`...`/function` or `endfunction` |
+| `<#assign x = 1>` | `x = 1` or `assign x = 1` |
+| `<#local x = 1>` | `x = 1` (inside macro) or `local x = 1` |
+| `<#global x = 1>` | `global x = 1` |
+| `<#return expr>` | `return expr` |
+| `<#import "x" as y>` | `import "x" as y` |
+| `<#include "x">` | `include "x"` |
+| `<#switch x>...</#switch>` | `switch x`...`/switch` or `endswitch` |
+| `${expr}` | `emit expr` |
+| `<#-- comment -->` | `// comment` or `/* comment */` |
+| `text` (direct output) | `emit "text"` or `emit """text"""` |
+| Multi-line text | `emit """..."""` (text block) |
+| `0xFF` (not supported) | `0xFF` (both modes) |
+| (not available) | `&`, `\|`, `^`, `~`, `<<`, `>>` (bitwise) |
+| (not available) | `&=`, `\|=`, `^=`, `<<=`, `>>=` (bitwise assign) |
