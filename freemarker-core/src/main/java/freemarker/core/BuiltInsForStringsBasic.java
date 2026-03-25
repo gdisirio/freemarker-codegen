@@ -725,6 +725,75 @@ class BuiltInsForStringsBasic {
         }
     }
 
+    static class padLinesBI extends BuiltInForString {
+
+        private class BIMethod implements TemplateMethodModelEx {
+
+            private final String s;
+
+            private BIMethod(String s) {
+                this.s = s;
+            }
+
+            @Override
+            public Object exec(List args) throws TemplateModelException {
+                int argCnt = args.size();
+                checkMethodArgCount(argCnt, 1, 2);
+
+                int column = getNumberMethodArg(args, 0).intValue();
+                if (column < 0) {
+                    throw new _TemplateModelException(
+                            "?", key, "(...) argument #1 must be non-negative.");
+                }
+
+                char fillChar = ' ';
+                if (argCnt > 1) {
+                    String filling = getStringMethodArg(args, 1);
+                    if (filling.length() != 1) {
+                        throw new _TemplateModelException(
+                                "?", key, "(...) argument #2 must be a single character string.");
+                    }
+                    fillChar = filling.charAt(0);
+                }
+
+                if (s.isEmpty()) {
+                    return new SimpleScalar(s);
+                }
+
+                StringBuilder sb = new StringBuilder(s.length() + column);
+                int lineStart = 0;
+                int len = s.length();
+                for (int i = 0; i <= len; i++) {
+                    if (i == len || s.charAt(i) == '\n' || s.charAt(i) == '\r') {
+                        int lineLen = i - lineStart;
+                        sb.append(s, lineStart, i);
+                        // Pad to column (skip empty lines)
+                        if (lineLen > 0) {
+                            for (int p = lineLen; p < column; p++) {
+                                sb.append(fillChar);
+                            }
+                        }
+                        // Append the line ending
+                        if (i < len) {
+                            sb.append(s.charAt(i));
+                            if (s.charAt(i) == '\r' && i + 1 < len && s.charAt(i + 1) == '\n') {
+                                i++;
+                                sb.append('\n');
+                            }
+                        }
+                        lineStart = i + 1;
+                    }
+                }
+                return new SimpleScalar(sb.toString());
+            }
+        }
+
+        @Override
+        TemplateModel calculateResult(String s, Environment env) throws TemplateException {
+            return new BIMethod(s);
+        }
+    }
+
     static class remove_beginningBI extends BuiltInForString {
         
         private class BIMethod implements TemplateMethodModelEx {

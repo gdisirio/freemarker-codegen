@@ -188,4 +188,55 @@ public class IndentAndWrapBuiltInTest {
         assertEquals("line1\nline2\nline3",
                 eval("text?indent('  ')?dedent('  ')", model));
     }
+
+    // ---- ?pad_lines tests ----
+
+    @Test
+    public void testPadLinesBasic() throws Exception {
+        assertEquals("a         \nbb        \nccc       \n",
+                eval("'a\\nbb\\nccc\\n'?pad_lines(10)"));
+    }
+
+    @Test
+    public void testPadLinesWithFillChar() throws Exception {
+        assertEquals("a.........\nbb........\n",
+                eval("'a\\nbb\\n'?pad_lines(10, '.')"));
+    }
+
+    @Test
+    public void testPadLinesLinePastColumn() throws Exception {
+        // "long line" (9 chars) past column 5 — no padding
+        // "ab" (2 chars) shorter than column 5 — padded
+        assertEquals("long line\nab   \n",
+                eval("'long line\\nab\\n'?pad_lines(5)"));
+    }
+
+    @Test
+    public void testPadLinesNoTrailingNewline() throws Exception {
+        assertEquals("a         ",
+                eval("'a'?pad_lines(10)"));
+    }
+
+    @Test
+    public void testPadLinesEmpty() throws Exception {
+        assertEquals("", eval("''?pad_lines(10)"));
+    }
+
+    @Test
+    public void testPadLinesCamelCase() throws Exception {
+        assertEquals("a    \nbb   \n",
+                eval("'a\\nbb\\n'?padLines(5)"));
+    }
+
+    @Test
+    public void testPadLinesCodeAlignment() throws Exception {
+        // Practical use: align code for trailing comments
+        Map<String, Object> model = new HashMap<>();
+        model.put("code", "int x;\nString name;\nboolean active;\n");
+        String result = eval("code?pad_lines(20)", model);
+        String[] lines = result.split("\n", -1);
+        assertEquals("int x;              ", lines[0]);
+        assertEquals("String name;        ", lines[1]);
+        assertEquals("boolean active;     ", lines[2]);
+    }
 }

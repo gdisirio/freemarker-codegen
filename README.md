@@ -802,6 +802,37 @@ text?indent("  ")?dedent("  ")   // returns original text
 |---|---|---|---|
 | 1 | string | yes | Prefix to remove from each line |
 
+### `?pad_lines(column)` / `?pad_lines(column, fill)`
+
+Like `?tab_to` but operates on every line of a multi-line string. Each line is padded to the target column. Lines already at or past the column are left unchanged. Empty lines are not padded.
+
+```
+"int x;\nString name;\n"?pad_lines(20)
+// "int x;              \nString name;        \n"
+```
+
+With a custom fill character:
+
+```
+"a\nbb\n"?pad_lines(10, '.')
+// "a.........\nbb........\n"
+```
+
+The camelCase alias `?padLines` is also supported.
+
+**Parameters:**
+
+| # | Type | Required | Description |
+|---|---|---|---|
+| 1 | number | yes | Target column width |
+| 2 | string | no | Single fill character (default: space) |
+
+**Use case** — aligning multi-line output for trailing comments:
+
+```
+emit code?pad_lines(40) // then append comments per line
+```
+
 ### `?wrap(width, firstPrefix, restPrefix)`
 
 Word-wraps the string to fit within `width` columns, using `firstPrefix` for the first line and `restPrefix` for subsequent lines. If `restPrefix` is omitted, `firstPrefix` is used for all lines. Output always ends with a newline.
