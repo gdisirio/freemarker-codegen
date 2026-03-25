@@ -93,6 +93,7 @@ public class FMParser {
     private int continuableDirectiveNesting;
     
     private boolean inMacro, inFunction, requireArgsSpecialVariable;
+    boolean codeFirstMode;
     private LinkedList escapes = new LinkedList();
     private int mixedContentNesting; // for stripText
 
@@ -280,6 +281,12 @@ public class FMParser {
             _TemplateAPI.setAutoEscaping(template, autoEscaping);
             _TemplateAPI.setOutputFormat(template, outputFormat);
         }
+
+        // Code-first mode: activated by ParserConfiguration flag or .ftlc file extension
+        this.codeFirstMode = pCfg.getCodeFirstMode() || isCodeFirstExtension();
+        if (this.codeFirstMode) {
+            token_source.SwitchTo(CODE_FIRST);
+        }
     }
 
     void setupStringLiteralMode(FMParser parentParser, OutputFormat outputFormat) {
@@ -351,6 +358,24 @@ public class FMParser {
         return null;
     }
 
+    private boolean isCodeFirstExtension() {
+        String sourceName = template.getSourceName();
+        if (sourceName == null) return false;
+        int ln = sourceName.length();
+        if (ln < 5) return false;
+        // Check for ".ftlc" (case insensitive)
+        char c = sourceName.charAt(ln - 5);
+        if (c != '.') return false;
+        c = sourceName.charAt(ln - 4);
+        if (c != 'f' && c != 'F') return false;
+        c = sourceName.charAt(ln - 3);
+        if (c != 't' && c != 'T') return false;
+        c = sourceName.charAt(ln - 2);
+        if (c != 'l' && c != 'L') return false;
+        c = sourceName.charAt(ln - 1);
+        return c == 'c' || c == 'C';
+    }
+
     /**
      * Updates the {@link #autoEscaping} field based on the {@link #autoEscapingPolicy} and {@link #outputFormat} fields.
      */
@@ -391,6 +416,34 @@ public class FMParser {
      */
     public int _getLastNamingConvention() {
         return token_source.namingConvention;
+    }
+
+    /**
+     * Don't use it, unless you are developing FreeMarker itself.
+     * Returns whether the parser is in code-first mode.
+     */
+    public boolean _isCodeFirstMode() {
+        return codeFirstMode;
+    }
+
+    /**
+     * Checks if the next token is a code-first block terminator (else, elseif, case, default, or a closing tag).
+     * Used by CodeFirstContent() to know when to stop consuming statements.
+     */
+    private boolean cfIsBlockTerminator() {
+        Token t = getToken(1);
+        if (t.kind == CF_END_IF || t.kind == CF_END_LIST || t.kind == CF_END_MACRO
+                || t.kind == CF_END_FUNCTION || t.kind == CF_END_SWITCH || t.kind == CF_END_SEP
+                || t.kind == EOF) {
+            return true;
+        }
+        if (t.kind == ID) {
+            String img = t.image;
+            return img.equals("else") || img.equals("elseif") || img.equals("case") || img.equals("default")
+                    || img.equals("endif") || img.equals("endlist") || img.equals("endmacro")
+                    || img.equals("endfunction") || img.equals("endswitch") || img.equals("endsep");
+        }
+        return false;
     }
 
     /**
@@ -1218,7 +1271,7 @@ TOKEN:
     }
 }
 
-<FM_EXPRESSION, IN_PAREN, NO_SPACE_EXPRESSION, NAMED_PARAMETER_EXPRESSION> TOKEN :
+<FM_EXPRESSION, IN_PAREN, NO_SPACE_EXPRESSION, NAMED_PARAMETER_EXPRESSION, CODE_FIRST> TOKEN :
 {
     <#ESCAPED_CHAR :
         "\\"
@@ -1252,6 +1305,8 @@ TOKEN:
     <INTEGER : (["0"-"9"])+>
     |
     <DECIMAL : <INTEGER> "." <INTEGER>>
+    |
+    <HEX_INTEGER : "0" ["x", "X"] (["0"-"9", "a"-"f", "A"-"F"])+>
     |
     <DOT : ".">
     |
@@ -1363,6 +1418,7 @@ TOKEN:
         --parenthesisNesting;
         if (parenthesisNesting == 0) {
             if (inInvocation) SwitchTo(NAMED_PARAMETER_EXPRESSION);
+            else if (parser != null && parser.codeFirstMode) SwitchTo(CODE_FIRST);
             else SwitchTo(FM_EXPRESSION);
         }
     }
@@ -1655,6 +1711,106 @@ TOKEN:
     <LONE_LESS_THAN_OR_DASH : ["<", "[", "-"]>
 }
 
+// ==============================
+// CODE_FIRST lexer state
+// ==============================
+// This state is the top-level state in code-first mode (.ftlc files or syntax="code-first").
+// Logic is the default; text output requires explicit delimiters.
+
+<CODE_FIRST> SKIP :
+{
+    < " " | "\t" >
+}
+
+<CODE_FIRST> SKIP :
+{
+    < "//" (~["\n", "\r"])* >
+}
+
+<CODE_FIRST> MORE :
+{
+    "/*" : CODE_FIRST_BLOCK_COMMENT
+}
+
+<CODE_FIRST_BLOCK_COMMENT> SKIP :
+{
+    < "*/" > : CODE_FIRST
+}
+
+<CODE_FIRST_BLOCK_COMMENT> MORE :
+{
+    < ~[] >
+}
+
+<CODE_FIRST> TOKEN :
+{
+    <CF_EOL : "\n" | "\r\n" | "\r">
+    |
+    // Block closing tags (these start with / so they don't conflict with ID)
+    <CF_END_IF : "/if">
+    |
+    <CF_END_LIST : "/list">
+    |
+    <CF_END_MACRO : "/macro">
+    |
+    <CF_END_FUNCTION : "/function">
+    |
+    <CF_END_SWITCH : "/switch">
+    |
+    <CF_END_SEP : "/sep">
+    |
+    // Greater-than operators (unambiguous in code-first mode, no tag-close conflict)
+    <CF_NATURAL_GT : ">">
+    |
+    <CF_NATURAL_GTE : ">=">
+    |
+    // Bitwise compound assignment operators (code-first only)
+    <CF_AND_EQUALS : "&=">
+    |
+    <CF_OR_EQUALS : "|=">
+    |
+    <CF_XOR_EQUALS : "^=">
+    |
+    <CF_LEFT_SHIFT_EQUALS : "<<=">
+    |
+    <CF_RIGHT_SHIFT_EQUALS : ">>=">
+    |
+    // Text block opener: """ starts a text block (must appear after emit keyword)
+    <CF_TEXT_BLOCK_OPEN : "\"\"\""> : CF_TEXT_BLOCK
+}
+
+// Bitwise expression operators — active in CODE_FIRST and IN_PAREN
+// (IN_PAREN needed because ( switches from CODE_FIRST to IN_PAREN)
+<CODE_FIRST, IN_PAREN> TOKEN :
+{
+    <CF_BITWISE_XOR : "^">
+    |
+    <CF_LEFT_SHIFT : "<<">
+    |
+    <CF_RIGHT_SHIFT : ">>">
+}
+
+// Bitwise NOT — CODE_FIRST only (adding ~ to IN_PAREN affects classic mode error column reporting)
+<CODE_FIRST> TOKEN :
+{
+    <CF_BITWISE_NOT : "~">
+}
+
+// CF_TEXT_BLOCK state: accumulate text content until closing """
+<CF_TEXT_BLOCK> MORE :
+{
+    < (~["\""])+ >
+    |
+    < "\"" ~["\""] >
+    |
+    < "\"\"" ~["\""] >
+}
+
+<CF_TEXT_BLOCK> TOKEN :
+{
+    <CF_TEXT_BLOCK_CONTENT : "\"\"\""> : CODE_FIRST
+}
+
 // Now the actual parsing code, starting
 // with the productions for FreeMarker's
 // expression syntax.
@@ -1768,9 +1924,27 @@ Expression UnaryExpression() :
         |
         result = NotExpression()
         |
+        LOOKAHEAD(<CF_BITWISE_NOT>)
+        result = BitwiseNotExpression()
+        |
         result = PrimaryExpression()
     )
     {
+        return result;
+    }
+}
+
+Expression BitwiseNotExpression() :
+{
+    Token t;
+    Expression exp;
+}
+{
+    t = <CF_BITWISE_NOT>
+    exp = PrimaryExpression()
+    {
+        Expression result = new BitwiseNotExpression(exp);
+        result.setLocation(template, t, exp);
         return result;
     }
 }
@@ -1927,9 +2101,9 @@ Expression RelationalExpression() :
     Token t;
 }
 {
-    lhs = RangeExpression() { result = lhs; }
+    lhs = ShiftExpression() { result = lhs; }
     [
-        LOOKAHEAD(<NATURAL_GTE>|<ESCAPED_GTE>|<NATURAL_GT>|<ESCAPED_GT>|<LESS_THAN_EQUALS>|<LESS_THAN_EQUALS>|<LESS_THAN>)
+        LOOKAHEAD(<NATURAL_GTE>|<ESCAPED_GTE>|<NATURAL_GT>|<ESCAPED_GT>|<CF_NATURAL_GTE>|<CF_NATURAL_GT>|<LESS_THAN_EQUALS>|<LESS_THAN_EQUALS>|<LESS_THAN>)
         (
             t = <NATURAL_GTE>
             |
@@ -1938,6 +2112,10 @@ Expression RelationalExpression() :
             t = <NATURAL_GT>
             |
             t = <ESCAPED_GT>
+            |
+            t = <CF_NATURAL_GTE>
+            |
+            t = <CF_NATURAL_GT>
             |
             t = <LESS_THAN_EQUALS>
             |
@@ -1951,6 +2129,36 @@ Expression RelationalExpression() :
             result.setLocation(template, lhs, rhs);
         }
     ]
+    {
+        return result;
+    }
+}
+
+/**
+ * Shift expressions (<< and >>). Only active in code-first mode;
+ * in classic mode, falls through to RangeExpression immediately.
+ */
+Expression ShiftExpression() :
+{
+    Expression lhs, rhs, result;
+    int op;
+}
+{
+    lhs = RangeExpression() { result = lhs; }
+    (
+        LOOKAHEAD(<CF_LEFT_SHIFT> | <CF_RIGHT_SHIFT>)
+        (
+            <CF_LEFT_SHIFT> { op = BitwiseExpression.TYPE_LEFT_SHIFT; }
+            |
+            <CF_RIGHT_SHIFT> { op = BitwiseExpression.TYPE_RIGHT_SHIFT; }
+        )
+        rhs = RangeExpression()
+        {
+            result = new BitwiseExpression(lhs, rhs, op);
+            result.setLocation(template, lhs, rhs);
+            lhs = result;
+        }
+    )*
     {
         return result;
     }
@@ -2012,11 +2220,11 @@ Expression AndExpression() :
     Expression lhs, rhs, result;
 }
 {
-    lhs = EqualityExpression() { result = lhs; }
+    lhs = BitwiseOrExpression() { result = lhs; }
     (
-        LOOKAHEAD(<AND>)
+        LOOKAHEAD({getToken(1).kind == AND && !(codeFirstMode && getToken(1).image.equals("&"))})
         <AND>
-        rhs = EqualityExpression()
+        rhs = BitwiseOrExpression()
         {
             booleanLiteralOnly(lhs);
             booleanLiteralOnly(rhs);
@@ -2037,13 +2245,80 @@ Expression OrExpression() :
 {
     lhs = AndExpression() { result = lhs; }
     (
-        LOOKAHEAD(<OR>)
+        LOOKAHEAD({getToken(1).kind == OR && !(codeFirstMode && getToken(1).image.equals("|"))})
         <OR>
         rhs = AndExpression()
         {
             booleanLiteralOnly(lhs);
             booleanLiteralOnly(rhs);
             result = new OrExpression(lhs, rhs);
+            result.setLocation(template, lhs, rhs);
+            lhs = result;
+        }
+    )*
+    {
+        return result;
+    }
+}
+
+/**
+ * Bitwise OR. Only produces BitwiseExpression nodes in code-first mode;
+ * in classic mode, falls through to BitwiseXorExpression immediately.
+ */
+Expression BitwiseOrExpression() :
+{
+    Expression lhs, rhs, result;
+}
+{
+    lhs = BitwiseXorExpression() { result = lhs; }
+    (
+        LOOKAHEAD({codeFirstMode && getToken(1).kind == OR && getToken(1).image.equals("|")})
+        <OR>
+        rhs = BitwiseXorExpression()
+        {
+            result = new BitwiseExpression(lhs, rhs, BitwiseExpression.TYPE_OR);
+            result.setLocation(template, lhs, rhs);
+            lhs = result;
+        }
+    )*
+    {
+        return result;
+    }
+}
+
+Expression BitwiseXorExpression() :
+{
+    Expression lhs, rhs, result;
+}
+{
+    lhs = BitwiseAndExpression() { result = lhs; }
+    (
+        LOOKAHEAD(<CF_BITWISE_XOR>)
+        <CF_BITWISE_XOR>
+        rhs = BitwiseAndExpression()
+        {
+            result = new BitwiseExpression(lhs, rhs, BitwiseExpression.TYPE_XOR);
+            result.setLocation(template, lhs, rhs);
+            lhs = result;
+        }
+    )*
+    {
+        return result;
+    }
+}
+
+Expression BitwiseAndExpression() :
+{
+    Expression lhs, rhs, result;
+}
+{
+    lhs = EqualityExpression() { result = lhs; }
+    (
+        LOOKAHEAD({codeFirstMode && getToken(1).kind == AND && getToken(1).image.equals("&")})
+        <AND>
+        rhs = EqualityExpression()
+        {
+            result = new BitwiseExpression(lhs, rhs, BitwiseExpression.TYPE_AND);
             result.setLocation(template, lhs, rhs);
             lhs = result;
         }
@@ -2078,10 +2353,23 @@ Expression NumberLiteral() :
         t = <INTEGER>
         |
         t = <DECIMAL>
+        |
+        t = <HEX_INTEGER>
     )
     {
         String s = t.image;
-        Expression result = new NumberLiteral(pCfg.getArithmeticEngine().toNumber(s));
+        Number n;
+        if (t.kind == HEX_INTEGER) {
+            long hexValue = Long.parseLong(s.substring(2), 16);
+            if (hexValue >= Integer.MIN_VALUE && hexValue <= Integer.MAX_VALUE) {
+                n = Integer.valueOf((int) hexValue);
+            } else {
+                n = Long.valueOf(hexValue);
+            }
+        } else {
+            n = pCfg.getArithmeticEngine().toNumber(s);
+        }
+        Expression result = new NumberLiteral(n);
         Token startToken = (op != null) ? op : t;
         result.setLocation(template, startToken, t);
         return result;
@@ -4700,6 +4988,19 @@ void HeaderElement() :
                                 }
                             } catch (TemplateModelException tme) {
                             }
+                        } else if (ks.equalsIgnoreCase("syntax")) {
+                            if (vs == null) {
+                                throw new ParseException("Expected a string constant for \"" + ks + "\".", exp);
+                            }
+                            if (vs.equals("code-first") || vs.equals("codeFirst")) {
+                                this.codeFirstMode = true;
+                            } else if (vs.equals("classic") || vs.equals("default")) {
+                                this.codeFirstMode = false;
+                            } else {
+                                throw new ParseException(
+                                    "Invalid value for \"" + ks + "\": \"" + vs
+                                    + "\". Expected: \"code-first\" or \"classic\".", exp);
+                            }
                         } else {
                             String correctName;
 	                        if (ks.equals("charset")) {
@@ -4829,11 +5130,23 @@ TemplateElement Root() :
         if (!(outputFormat instanceof MarkupOutputFormat) && autoEscapingPolicy == Configuration.FORCE_AUTO_ESCAPING_POLICY) {
             throw new IllegalArgumentException(forcedAutoEscapingPolicyExceptionMessage(outputFormat));
         }
+        if (codeFirstMode && token_source.curLexState != CODE_FIRST) {
+            // Code-first mode activated by <#ftl syntax="code-first"> header;
+            // switch lexer and reset token buffer.
+            token_source.SwitchTo(CODE_FIRST);
+            token = new Token();
+            jj_ntk = -1;
+        }
     }
-    children = MixedContentElements()
+    (
+        LOOKAHEAD({codeFirstMode})
+        children = CodeFirstContent()
+        |
+        children = MixedContentElements()
+    )
     <EOF>
     {
-        TemplateElement root = children.asSingleElement(); 
+        TemplateElement root = children.asSingleElement();
         root.setFieldsForRootElement();
         if (!preventStrippings) {
             root = root.postParseCleanup(stripWhitespace);
@@ -4841,5 +5154,638 @@ TemplateElement Root() :
         // The cleanup result is possibly an element from deeper:
         root.setFieldsForRootElement();
         return root;
+    }
+}
+
+/**
+ * Top-level content in code-first mode. Parses a sequence of code-first statements.
+ * Comments and whitespace are SKIPped by the lexer; only EOL tokens reach the parser.
+ * Directives and assignments will be added in later tasks.
+ */
+TemplateElements CodeFirstContent() :
+{
+    TemplateElement[] childBuffer = null;
+    int childCount = 0;
+    TemplateElement elem;
+}
+{
+    (
+        LOOKAHEAD({!cfIsBlockTerminator()})
+        (
+            <CF_EOL>  { elem = null; }
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("if")})
+            elem = CodeFirstIf()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("list")})
+            elem = CodeFirstList()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("macro")})
+            elem = CodeFirstMacro(false)
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("function")})
+            elem = CodeFirstMacro(true)
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("return")})
+            elem = CodeFirstReturn()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("break")})
+            elem = CodeFirstBreak()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("continue")})
+            elem = CodeFirstContinue()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("sep")})
+            elem = CodeFirstSep()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("import")})
+            elem = CodeFirstImport()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("include")})
+            elem = CodeFirstInclude()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("emit")})
+            elem = CodeFirstEmit()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("switch")})
+            elem = CodeFirstSwitch()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("global")})
+            elem = CodeFirstAssignment(Assignment.GLOBAL)
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("assign")})
+            elem = CodeFirstAssignment(Assignment.NAMESPACE)
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("local")})
+            elem = CodeFirstAssignment(Assignment.LOCAL)
+            |
+            LOOKAHEAD(<ID> (<EQUALS> | <PLUS_EQUALS> | <MINUS_EQUALS> | <TIMES_EQUALS> | <DIV_EQUALS> | <MOD_EQUALS> | <CF_AND_EQUALS> | <CF_OR_EQUALS> | <CF_XOR_EQUALS> | <CF_LEFT_SHIFT_EQUALS> | <CF_RIGHT_SHIFT_EQUALS> | <PLUS_PLUS> | <MINUS_MINUS>))
+            elem = CodeFirstAssignment(inMacro || inFunction ? Assignment.LOCAL : Assignment.NAMESPACE)
+            |
+            // Macro/function call: identifier followed by arguments
+            LOOKAHEAD(<ID> <OPEN_PAREN>)
+            elem = CodeFirstCall()
+        )
+        {
+            if (elem != null) {
+                childCount++;
+                if (childBuffer == null) {
+                    childBuffer = new TemplateElement[16];
+                } else if (childBuffer.length < childCount) {
+                    TemplateElement[] newChildBuffer = new TemplateElement[childCount * 2];
+                    for (int i = 0; i < childBuffer.length; i++) {
+                        newChildBuffer[i] = childBuffer[i];
+                    }
+                    childBuffer = newChildBuffer;
+                }
+                childBuffer[childCount - 1] = elem;
+            }
+        }
+    )*
+    {
+        return childBuffer != null ? new TemplateElements(childBuffer, childCount) : TemplateElements.EMPTY;
+    }
+}
+
+/**
+ * Code-first if/elseif/else block.
+ */
+TemplateElement CodeFirstIf() :
+{
+    Token start, end, t;
+    Expression condition;
+    TemplateElements children;
+    IfBlock ifBlock;
+    ConditionalBlock cblock;
+}
+{
+    start = <ID> // "if" - verified by semantic LOOKAHEAD
+    condition = Expression()
+    <CF_EOL>
+    children = CodeFirstContent()
+    {
+        cblock = new ConditionalBlock(condition, children, ConditionalBlock.TYPE_IF);
+        cblock.setLocation(template, start, start, children);
+        ifBlock = new IfBlock(cblock);
+    }
+    (
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("elseif")})
+        t = <ID> // "elseif"
+        condition = Expression()
+        <CF_EOL>
+        children = CodeFirstContent()
+        {
+            cblock = new ConditionalBlock(condition, children, ConditionalBlock.TYPE_ELSE_IF);
+            cblock.setLocation(template, t, t, children);
+            ifBlock.addBlock(cblock);
+        }
+    )*
+    [
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("else")})
+        t = <ID> // "else"
+        <CF_EOL>
+        children = CodeFirstContent()
+        {
+            cblock = new ConditionalBlock(null, children, ConditionalBlock.TYPE_ELSE);
+            cblock.setLocation(template, t, t, children);
+            ifBlock.addBlock(cblock);
+        }
+    ]
+    ( end = <CF_END_IF> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endif")}) end = <ID> )
+    [ <CF_EOL> ]
+    {
+        ifBlock.setLocation(template, start, end);
+        return ifBlock;
+    }
+}
+
+/**
+ * Code-first list block.
+ */
+TemplateElement CodeFirstList() :
+{
+    Expression exp;
+    Token loopVar = null, loopVar2 = null, start, end;
+    TemplateElements childrendBeforeElse;
+    ElseOfList elseOfList = null;
+    ParserIteratorBlockContext iterCtx;
+}
+{
+    start = <ID> // "list"
+    exp = Expression()
+    [
+        <AS>
+        loopVar = <ID>
+        [
+            <COMMA>
+            loopVar2 = <ID>
+        ]
+    ]
+    <CF_EOL>
+    {
+        iterCtx = pushIteratorBlockContext();
+        if (loopVar != null) {
+            iterCtx.loopVarName = loopVar.image;
+            breakableDirectiveNesting++;
+            continuableDirectiveNesting++;
+            if (loopVar2 != null) {
+                iterCtx.loopVar2Name = loopVar2.image;
+                iterCtx.hashListing = true;
+                if (iterCtx.loopVar2Name.equals(iterCtx.loopVarName)) {
+                    throw new ParseException(
+                            "The key and value loop variable names must differ, but both were: " + iterCtx.loopVarName,
+                            template, start);
+                }
+            }
+        }
+    }
+    childrendBeforeElse = CodeFirstContent()
+    {
+        if (loopVar != null) {
+            breakableDirectiveNesting--;
+            continuableDirectiveNesting--;
+        } else if (iterCtx.kind != ITERATOR_BLOCK_KIND_ITEMS) {
+            throw new ParseException(
+                    "list must have either \"as loopVar\" parameter or nested items that belongs to it.",
+                    template, start);
+        }
+        popIteratorBlockContext();
+    }
+    [
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("else")})
+        elseOfList = CodeFirstElseOfList()
+    ]
+    ( end = <CF_END_LIST> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endlist")}) end = <ID> )
+    [ <CF_EOL> ]
+    {
+        IteratorBlock list = new IteratorBlock(
+                exp,
+                loopVar != null ? loopVar.image : null,
+                loopVar2 != null ? loopVar2.image : null,
+                childrendBeforeElse, iterCtx.hashListing, false);
+        if (elseOfList != null) {
+            ListElseContainer listElse = new ListElseContainer(list, elseOfList);
+            listElse.setLocation(template, start, end);
+            return listElse;
+        }
+        list.setLocation(template, start, end);
+        return list;
+    }
+}
+
+ElseOfList CodeFirstElseOfList() :
+{
+    Token start;
+    TemplateElements children;
+}
+{
+    start = <ID> // "else"
+    <CF_EOL>
+    children = CodeFirstContent()
+    {
+        ElseOfList result = new ElseOfList(children);
+        result.setLocation(template, start, start, children);
+        return result;
+    }
+}
+
+/**
+ * Code-first macro/function definition.
+ */
+Macro CodeFirstMacro(boolean isFunction) :
+{
+    Token start, end;
+    Token id;
+    LinkedHashMap paramNamesWithDefault = new LinkedHashMap();
+    Token catchAllParamName = null;
+    TemplateElements children;
+}
+{
+    start = <ID> // "macro" or "function" - verified by caller's LOOKAHEAD
+    id = <ID>
+    <OPEN_PAREN>
+    [
+        {
+            Token paramName;
+            Expression paramDefault;
+        }
+        paramName = <ID>
+        { paramDefault = null; }
+        [
+            <EQUALS>
+            paramDefault = Expression()
+        ]
+        { paramNamesWithDefault.put(paramName.image, paramDefault); }
+        (
+            <COMMA>
+            paramName = <ID>
+            { paramDefault = null; }
+            [
+                <EQUALS>
+                paramDefault = Expression()
+            ]
+            { paramNamesWithDefault.put(paramName.image, paramDefault); }
+        )*
+        [
+            <ELLIPSIS>
+            catchAllParamName = <ID>
+        ]
+    ]
+    <CLOSE_PAREN>
+    <CF_EOL>
+    {
+        if (isFunction) inFunction = true; else inMacro = true;
+    }
+    children = CodeFirstContent()
+    {
+        inMacro = inFunction = false;
+    }
+    (
+        ( end = <CF_END_MACRO> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endmacro")}) end = <ID> )
+        { if (isFunction) throw new ParseException("Expected /function or endfunction, not /macro.", template, end); }
+        |
+        ( end = <CF_END_FUNCTION> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endfunction")}) end = <ID> )
+        { if (!isFunction) throw new ParseException("Expected /macro or endmacro, not /function.", template, end); }
+    )
+    [ <CF_EOL> ]
+    {
+        Macro macro = new Macro(
+                id.image, paramNamesWithDefault,
+                catchAllParamName != null ? catchAllParamName.image : null,
+                isFunction, false, children);
+        macro.setLocation(template, start, end);
+        template.addMacro(macro);
+        return macro;
+    }
+}
+
+/**
+ * Code-first return statement.
+ */
+TemplateElement CodeFirstReturn() :
+{
+    Token start;
+    Expression exp = null;
+}
+{
+    start = <ID> // "return"
+    [ LOOKAHEAD({getToken(1).kind != CF_EOL}) exp = Expression() ]
+    <CF_EOL>
+    {
+        ReturnInstruction result = new ReturnInstruction(exp);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first break statement.
+ */
+TemplateElement CodeFirstBreak() :
+{
+    Token start;
+}
+{
+    start = <ID> // "break"
+    <CF_EOL>
+    {
+        BreakInstruction result = new BreakInstruction();
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first continue statement.
+ */
+TemplateElement CodeFirstContinue() :
+{
+    Token start;
+}
+{
+    start = <ID> // "continue"
+    <CF_EOL>
+    {
+        ContinueInstruction result = new ContinueInstruction();
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first sep block.
+ */
+Sep CodeFirstSep() :
+{
+    Token start, end;
+    TemplateElements children;
+}
+{
+    start = <ID> // "sep"
+    <CF_EOL>
+    children = CodeFirstContent()
+    ( end = <CF_END_SEP> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endsep")}) end = <ID> )
+    [ <CF_EOL> ]
+    {
+        Sep result = new Sep(children);
+        result.setLocation(template, start, end);
+        return result;
+    }
+}
+
+/**
+ * Code-first import statement.
+ */
+TemplateElement CodeFirstImport() :
+{
+    Token start;
+    Expression path;
+    Token ns;
+}
+{
+    start = <ID> // "import"
+    path = Expression()
+    <AS>
+    ns = <ID>
+    <CF_EOL>
+    {
+        LibraryLoad result = new LibraryLoad(template, path, ns.image);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first include statement.
+ */
+Include CodeFirstInclude() :
+{
+    Token start;
+    Expression path;
+}
+{
+    start = <ID> // "include"
+    path = Expression()
+    <CF_EOL>
+    {
+        Include result = new Include(template, path, null, null, null);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first switch block.
+ */
+TemplateElement CodeFirstSwitch() :
+{
+    Token start, end, t;
+    Expression switchExp, caseExp;
+    TemplateElements children;
+    SwitchBlock switchBlock;
+    Case caseBlock;
+    boolean defaultFound = false;
+}
+{
+    start = <ID> // "switch"
+    switchExp = Expression()
+    <CF_EOL>
+    {
+        switchBlock = new SwitchBlock(switchExp, null);
+    }
+    (
+        <CF_EOL>
+    )*
+    (
+        (
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("case")})
+            t = <ID> // "case"
+            caseExp = Expression()
+            <CF_EOL>
+            children = CodeFirstContent()
+            {
+                caseBlock = new Case(caseExp, children);
+                caseBlock.setLocation(template, t, t, children);
+                switchBlock.addCase(caseBlock);
+            }
+        )
+        |
+        (
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("default")})
+            t = <ID> // "default"
+            <CF_EOL>
+            children = CodeFirstContent()
+            {
+                if (defaultFound) throw new ParseException("Only one default allowed per switch.", template, t);
+                defaultFound = true;
+                caseBlock = new Case(null, children);
+                caseBlock.setLocation(template, t, t, children);
+                switchBlock.addCase(caseBlock);
+            }
+        )
+    )*
+    ( end = <CF_END_SWITCH> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endswitch")}) end = <ID> )
+    [ <CF_EOL> ]
+    {
+        switchBlock.setLocation(template, start, end);
+        return switchBlock;
+    }
+}
+
+/**
+ * Code-first assignment: x = value, x += value, x++, etc.
+ * Also handles "global x = value".
+ */
+/**
+ * Code-first macro/function call: name(args)
+ */
+TemplateElement CodeFirstCall() :
+{
+    Token start;
+    Expression macroName;
+    ArrayList positionalArgs;
+}
+{
+    start = <ID>
+    {
+        macroName = new Identifier(start.image);
+        macroName.setLocation(template, start, start);
+    }
+    <OPEN_PAREN>
+    positionalArgs = PositionalArgs()
+    <CLOSE_PAREN>
+    <CF_EOL>
+    {
+        UnifiedCall result = new UnifiedCall(macroName, positionalArgs, TemplateElements.EMPTY, null);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first emit statement: emit expression
+ * Outputs the value of an expression (typically a string literal with interpolations).
+ * Example: emit "Hello, ${name}!"
+ */
+TemplateElement CodeFirstEmit() :
+{
+    Token start;
+    Token textBlock;
+    Expression exp;
+}
+{
+    start = <ID> // "emit"
+    (
+        LOOKAHEAD(<CF_TEXT_BLOCK_OPEN>)
+        <CF_TEXT_BLOCK_OPEN>
+        textBlock = <CF_TEXT_BLOCK_CONTENT>
+        [ <CF_EOL> ]
+        {
+            // Extract content: token image includes accumulated text + closing """
+            String raw = textBlock.image;
+            // Strip the trailing """ (the closing delimiter)
+            String content = raw.substring(0, raw.length() - 3);
+            // Apply leading newline stripping rule:
+            // If content starts with optional whitespace + EOL, strip that first line
+            if (content.length() > 0) {
+                int i = 0;
+                while (i < content.length() && (content.charAt(i) == ' ' || content.charAt(i) == '\t')) {
+                    i++;
+                }
+                if (i < content.length() && content.charAt(i) == '\n') {
+                    content = content.substring(i + 1);
+                } else if (i < content.length() && content.charAt(i) == '\r') {
+                    if (i + 1 < content.length() && content.charAt(i + 1) == '\n') {
+                        content = content.substring(i + 2);
+                    } else {
+                        content = content.substring(i + 1);
+                    }
+                }
+            }
+            // Create a StringLiteral from the content and process interpolations
+            StringLiteral sl = new StringLiteral(content);
+            sl.setLocation(template, textBlock, textBlock);
+            sl.parseValue(this, outputFormat);
+            exp = sl;
+            DollarVariable result = new DollarVariable(
+                    exp, escapedExpression(exp),
+                    outputFormat,
+                    autoEscaping);
+            result.setLocation(template, start, textBlock);
+            return result;
+        }
+        |
+        exp = Expression()
+        <CF_EOL>
+        {
+            DollarVariable result = new DollarVariable(
+                    exp, escapedExpression(exp),
+                    outputFormat,
+                    autoEscaping);
+            result.setLocation(template, start, start);
+            return result;
+        }
+    )
+}
+
+TemplateElement CodeFirstAssignment(int scope) :
+{
+    Token start = null, equalsOp;
+    Token id;
+    Expression exp = null;
+    String varName;
+}
+{
+    [
+        LOOKAHEAD({getToken(1).kind == ID && (getToken(1).image.equals("global") || getToken(1).image.equals("assign") || getToken(1).image.equals("local"))})
+        start = <ID> // "global", "assign", or "local"
+        {
+            if (start.image.equals("global")) scope = Assignment.GLOBAL;
+            else if (start.image.equals("local")) scope = Assignment.LOCAL;
+            else scope = Assignment.NAMESPACE; // "assign"
+        }
+    ]
+    id = <ID>
+    { varName = id.image; }
+    (
+        (
+            equalsOp = <EQUALS>
+            |
+            equalsOp = <PLUS_EQUALS>
+            |
+            equalsOp = <MINUS_EQUALS>
+            |
+            equalsOp = <TIMES_EQUALS>
+            |
+            equalsOp = <DIV_EQUALS>
+            |
+            equalsOp = <MOD_EQUALS>
+            |
+            equalsOp = <CF_AND_EQUALS>
+            |
+            equalsOp = <CF_OR_EQUALS>
+            |
+            equalsOp = <CF_XOR_EQUALS>
+            |
+            equalsOp = <CF_LEFT_SHIFT_EQUALS>
+            |
+            equalsOp = <CF_RIGHT_SHIFT_EQUALS>
+        )
+        exp = Expression()
+        |
+        (
+            equalsOp = <PLUS_PLUS>
+            |
+            equalsOp = <MINUS_MINUS>
+        )
+    )
+    <CF_EOL>
+    {
+        if (start == null) start = id;
+        Assignment ass = new Assignment(varName, equalsOp.kind, exp, scope);
+        AssignmentInstruction result = new AssignmentInstruction(scope);
+        result.addAssignment(ass);
+        result.setLocation(template, start, start);
+        return result;
     }
 }

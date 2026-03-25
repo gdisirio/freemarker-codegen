@@ -193,6 +193,7 @@ public class TemplateConfigurationTest {
         SETTING_ASSIGNMENTS.put("outputFormat", HTMLOutputFormat.INSTANCE);
         SETTING_ASSIGNMENTS.put("recognizeStandardFileExtensions", true);
         SETTING_ASSIGNMENTS.put("tabSize", 1);
+        SETTING_ASSIGNMENTS.put("codeFirstMode", true);
         SETTING_ASSIGNMENTS.put("lazyImports", Boolean.TRUE);
         SETTING_ASSIGNMENTS.put("lazyAutoImports", Boolean.FALSE);
         SETTING_ASSIGNMENTS.put("autoImports", ImmutableMap.of("a", "/lib/a.ftl"));
@@ -695,7 +696,17 @@ public class TemplateConfigurationTest {
                     "13", "8");
             testedProps.add(Configuration.TAB_SIZE_KEY_CAMEL_CASE);
         }
-        
+
+        {
+            // Code-first mode is a parser setting; in code-first mode, only comments and
+            // blank lines are parsed. Verify that it parses without error.
+            TemplateConfiguration tc = new TemplateConfiguration();
+            tc.setParentConfiguration(DEFAULT_CFG);
+            tc.setCodeFirstMode(true);
+            assertOutputWithoutAndWithTC(tc, "", "", "");
+            testedProps.add("codeFirstMode");
+        }
+
         assertEquals("Check that you have tested all parser settings; ", PARSER_PROP_NAMES, testedProps);
     }
     

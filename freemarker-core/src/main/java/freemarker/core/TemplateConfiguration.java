@@ -88,6 +88,7 @@ public final class TemplateConfiguration extends Configurable implements ParserC
     private OutputFormat outputFormat;
     private String encoding;
     private Integer tabSize;
+    private Boolean codeFirstMode;
 
     /**
      * Creates a new instance. The parent will be {@link Configuration#getDefaultConfiguration()} initially, but it will
@@ -265,6 +266,9 @@ public final class TemplateConfiguration extends Configurable implements ParserC
         }
         if (tc.isTabSizeSet()) {
             setTabSize(tc.getTabSize());
+        }
+        if (tc.isCodeFirstModeSet()) {
+            setCodeFirstMode(tc.getCodeFirstMode());
         }
         if (tc.isLazyImportsSet()) {
             setLazyImports(tc.getLazyImports());
@@ -654,7 +658,36 @@ public final class TemplateConfiguration extends Configurable implements ParserC
     public boolean isTabSizeSet() {
         return tabSize != null;
     }
-    
+
+    /**
+     * See {@link Configuration#setCodeFirstMode(boolean)}.
+     *
+     * @since 2.3.35
+     */
+    public void setCodeFirstMode(boolean codeFirstMode) {
+        this.codeFirstMode = Boolean.valueOf(codeFirstMode);
+    }
+
+    /**
+     * Getter pair of {@link #setCodeFirstMode(boolean)}.
+     *
+     * @since 2.3.35
+     */
+    @Override
+    public boolean getCodeFirstMode() {
+        return codeFirstMode != null ? codeFirstMode.booleanValue()
+                : getNonNullParentConfiguration().getCodeFirstMode();
+    }
+
+    /**
+     * Tells if this setting is set directly in this object or its value is coming from the {@link #getParent() parent}.
+     *
+     * @since 2.3.35
+     */
+    public boolean isCodeFirstModeSet() {
+        return codeFirstMode != null;
+    }
+
     /**
      * Returns {@link Configuration#getIncompatibleImprovements()} from the parent {@link Configuration}. This mostly
      * just exist to satisfy the {@link ParserConfiguration} interface.

@@ -84,9 +84,16 @@ public interface ParserConfiguration {
     
     /**
      * See {@link Configuration#getTabSize()}.
-     * 
+     *
      * @since 2.3.25
      */
     int getTabSize();
+
+    /**
+     * See {@link Configuration#getCodeFirstMode()}.
+     *
+     * @since 2.3.35
+     */
+    boolean getCodeFirstMode();
 
 }

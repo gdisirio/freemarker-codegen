@@ -570,6 +570,7 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     private int interpolationSyntax = LEGACY_INTERPOLATION_SYNTAX;
     private int namingConvention = AUTO_DETECT_NAMING_CONVENTION;
     private int tabSize = 8;  // Default from JavaCC 3.x
+    private boolean codeFirstMode;
     private boolean fallbackOnNullLoopVariable = true;  // Default for backward compatibility
     private boolean preventStrippings;
 
@@ -2790,6 +2791,26 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     @Override
     public int getTabSize() {
         return tabSize;
+    }
+
+    /**
+     * Enables code-first syntax mode, where logic is the default and text output requires explicit delimiters.
+     * This mode is also automatically activated for templates with the {@code .ftlc} file extension.
+     *
+     * @since 2.3.35
+     */
+    public void setCodeFirstMode(boolean codeFirstMode) {
+        this.codeFirstMode = codeFirstMode;
+    }
+
+    /**
+     * The getter pair of {@link #setCodeFirstMode(boolean)}.
+     *
+     * @since 2.3.35
+     */
+    @Override
+    public boolean getCodeFirstMode() {
+        return codeFirstMode;
     }
 
     /**

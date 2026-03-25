@@ -19,6 +19,7 @@
 
 package freemarker.core;
 
+import freemarker.template.SimpleNumber;
 import freemarker.template.TemplateException;
 import freemarker.template.TemplateModel;
 import freemarker.template.TemplateNumberModel;
@@ -31,11 +32,17 @@ import freemarker.template.TemplateScalarModel;
  */
 final class Assignment extends TemplateElement {
 
-    // These must not clash with ArithmeticExpression.TYPE_... constants: 
+    // These must not clash with ArithmeticExpression.TYPE_... or BitwiseExpression.TYPE_... constants:
     private static final int OPERATOR_TYPE_EQUALS = 0x10000;
     private static final int OPERATOR_TYPE_PLUS_EQUALS = 0x10001;
     private static final int OPERATOR_TYPE_PLUS_PLUS = 0x10002;
     private static final int OPERATOR_TYPE_MINUS_MINUS = 0x10003;
+    // Bitwise compound assignment operator types (0x20000 range):
+    private static final int OPERATOR_TYPE_AND_EQUALS = 0x20000;
+    private static final int OPERATOR_TYPE_OR_EQUALS = 0x20001;
+    private static final int OPERATOR_TYPE_XOR_EQUALS = 0x20002;
+    private static final int OPERATOR_TYPE_LEFT_SHIFT_EQUALS = 0x20003;
+    private static final int OPERATOR_TYPE_RIGHT_SHIFT_EQUALS = 0x20004;
     
     private final int/*enum*/ scope;
     private final String variableName;
@@ -86,6 +93,21 @@ final class Assignment extends TemplateElement {
                 break;
             case FMParserConstants.MOD_EQUALS:
                 operatorType = ArithmeticExpression.TYPE_MODULO;
+                break;
+            case FMParserConstants.CF_AND_EQUALS:
+                operatorType = OPERATOR_TYPE_AND_EQUALS;
+                break;
+            case FMParserConstants.CF_OR_EQUALS:
+                operatorType = OPERATOR_TYPE_OR_EQUALS;
+                break;
+            case FMParserConstants.CF_XOR_EQUALS:
+                operatorType = OPERATOR_TYPE_XOR_EQUALS;
+                break;
+            case FMParserConstants.CF_LEFT_SHIFT_EQUALS:
+                operatorType = OPERATOR_TYPE_LEFT_SHIFT_EQUALS;
+                break;
+            case FMParserConstants.CF_RIGHT_SHIFT_EQUALS:
+                operatorType = OPERATOR_TYPE_RIGHT_SHIFT_EQUALS;
                 break;
             default:
                 throw new BugException();
@@ -181,6 +203,35 @@ final class Assignment extends TemplateElement {
                 } else if (operatorType == OPERATOR_TYPE_MINUS_MINUS) {
                     value = ArithmeticExpression._eval(
                             env, getParentElement(), lhoNumber, ArithmeticExpression.TYPE_SUBSTRACTION, ONE);
+                } else if (operatorType >= 0x20000) { // Bitwise compound assignment
+                    Number rhoNumber = valueExp.evalToNumber(env);
+                    long left = lhoNumber.longValue();
+                    long right = rhoNumber.longValue();
+                    long result;
+                    switch (operatorType) {
+                    case OPERATOR_TYPE_AND_EQUALS:
+                        result = left & right;
+                        break;
+                    case OPERATOR_TYPE_OR_EQUALS:
+                        result = left | right;
+                        break;
+                    case OPERATOR_TYPE_XOR_EQUALS:
+                        result = left ^ right;
+                        break;
+                    case OPERATOR_TYPE_LEFT_SHIFT_EQUALS:
+                        result = left << right;
+                        break;
+                    case OPERATOR_TYPE_RIGHT_SHIFT_EQUALS:
+                        result = left >> right;
+                        break;
+                    default:
+                        throw new BugException("Unexpected bitwise operator type: " + operatorType);
+                    }
+                    if (result >= Integer.MIN_VALUE && result <= Integer.MAX_VALUE) {
+                        value = new SimpleNumber(Integer.valueOf((int) result));
+                    } else {
+                        value = new SimpleNumber(Long.valueOf(result));
+                    }
                 } else { // operatorType == ArithmeticExpression.TYPE_...
                     Number rhoNumber = valueExp.evalToNumber(env);
                     value = ArithmeticExpression._eval(env, this, lhoNumber, operatorType, rhoNumber);

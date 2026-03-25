@@ -156,5 +156,10 @@ class LegacyConstructorParserConfiguration implements ParserConfiguration {
             this.tabSize = Integer.valueOf(tabSize);
         }
     }
-    
+
+    @Override
+    public boolean getCodeFirstMode() {
+        return false;
+    }
+
 }
