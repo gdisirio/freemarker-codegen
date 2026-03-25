@@ -1,8 +1,37 @@
 # FreeMarker Code-First Mode
 
-Code-first mode inverts FreeMarker's default behavior: **logic is the default** and text output requires explicit delimiters. This is designed for use cases where FreeMarker is used as a code generation language rather than a document template processor.
+Code-first mode inverts FreeMarker's default behavior: **logic is the default** and text output requires explicit delimiters. This is designed for use cases where FreeMarker is used as a **code generation language** rather than a document template processor.
 
-All changes are isolated to the parser/lexer layer. No new AST node types are introduced — all code-first syntax maps to existing FreeMarker internals. Existing `.ftl` files and behavior are completely unchanged.
+## Why code-first mode?
+
+Standard FreeMarker was designed for HTML and document templating, where most of the file is literal text with occasional logic. When used for code generation, this model becomes a liability:
+
+- **Angle-bracket noise.** Every directive requires `<#...>`, and every closing tag requires `</#...>`. In a template that is 80% logic and 20% output, these delimiters dominate the file and obscure the actual intent.
+- **Whitespace battles.** FreeMarker outputs all text literally, including indentation and newlines around directives. Code generators spend significant effort fighting this — using `<#t>`, `<#lt>`, `<#rt>`, or cramming directives onto single lines to avoid blank lines in output.
+- **No `>` without parentheses.** The `>` and `>=` operators conflict with the tag-closing `>` in classic mode, forcing `(x > 0)` or workarounds like `gt`. Code generation templates are full of comparisons, making this a constant friction.
+- **No bitwise operations.** Low-level code generation (hardware registers, binary protocols, color manipulation) requires bitwise operations that classic FreeMarker simply does not have.
+- **No hex literals.** Related to the above — working with bitmasks and hardware constants without hex literals means scattering magic decimal numbers throughout the template.
+- **Comment syntax mismatch.** `<#-- ... -->` looks nothing like the `//` and `/* */` that developers read and write every day. When the template itself is logic-heavy, this feels unnatural.
+
+Code-first mode solves all of these:
+
+| Problem | Classic FreeMarker | Code-First |
+|---|---|---|
+| Directive syntax | `<#if cond>...</#if>` | `if cond`...`endif` |
+| Text output | Implicit (everything is output) | Explicit (`emit`) — no whitespace surprises |
+| Comparisons | `(x > 0)` or `x gt 0` | `x > 0` — just works |
+| Bitwise ops | Not available | `&`, `\|`, `^`, `~`, `<<`, `>>` |
+| Hex literals | Not available | `0xFF` (also enabled in classic mode) |
+| Comments | `<#-- comment -->` | `// comment` or `/* comment */` |
+| Assignment | `<#assign x = 1>` | `x = 1` |
+
+The result is templates that **read like the code they generate**, with a clean imperative syntax that any developer can follow without learning FreeMarker's tag conventions.
+
+## Design principles
+
+- **Parser-only change.** All code-first syntax maps to existing FreeMarker AST nodes. There is no runtime difference — the same engine evaluates both modes identically.
+- **Zero impact on existing templates.** Standard `.ftl` files and behavior are completely unchanged. Code-first mode is strictly opt-in.
+- **Full interoperability.** `.ftl` and `.ftlc` files can freely import and include each other. Each file is parsed independently with its own mode.
 
 ---
 
@@ -474,6 +503,44 @@ emit "R=${red?c} G=${green?c} B=${blue?c}\n"
 
 ---
 
+## New Built-ins
+
+These built-ins are new additions, available in **both** classic and code-first modes.
+
+### `?tab_to(column)` / `?tab_to(column, fill)`
+
+Pads a string with spaces (or a custom fill character) until it reaches the target column width. If the string is already at or past the target column, it is returned unchanged — no truncation occurs.
+
+```
+"hello"?tab_to(20)           // "hello               "
+"hello"?tab_to(20, '.')      // "hello..............."
+"hello world"?tab_to(5)      // "hello world" (unchanged)
+```
+
+The camelCase alias `?tabTo` is also supported.
+
+**Parameters:**
+
+| # | Type | Required | Description |
+|---|---|---|---|
+| 1 | number | yes | Target column (0-based width) |
+| 2 | string | no | Single fill character (default: space) |
+
+**Use case** — aligning generated code:
+
+```
+// Code-first example: aligned field declarations
+list fields as field
+  emit "${field.type}"?tab_to(12) + "${field.name};"?tab_to(32) + "// ${field.comment}\n"
+endlist
+
+// Output:
+// int         count;                  // item count
+// String      name;                   // display name
+```
+
+---
+
 ## Complete Example
 
 A code generator that produces a Java class from a data model:
@@ -552,3 +619,4 @@ emit "}\n"
 | `0xFF` (not supported) | `0xFF` (both modes) |
 | (not available) | `&`, `\|`, `^`, `~`, `<<`, `>>` (bitwise) |
 | (not available) | `&=`, `\|=`, `^=`, `<<=`, `>>=` (bitwise assign) |
+| (not available) | `?tab_to(col)`, `?tab_to(col, fill)` (pad to column) |
