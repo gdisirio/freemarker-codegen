@@ -441,7 +441,8 @@ public class FMParser {
             String img = t.image;
             return img.equals("else") || img.equals("elseif") || img.equals("case") || img.equals("default")
                     || img.equals("endif") || img.equals("endlist") || img.equals("endmacro")
-                    || img.equals("endfunction") || img.equals("endswitch") || img.equals("endsep");
+                    || img.equals("endfunction") || img.equals("endswitch") || img.equals("endsep")
+                    || img.equals("recover") || img.equals("endattempt");
         }
         return false;
     }
@@ -5207,6 +5208,12 @@ TemplateElements CodeFirstContent() :
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("emit")})
             elem = CodeFirstEmit()
             |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("stop")})
+            elem = CodeFirstStop()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("attempt")})
+            elem = CodeFirstAttempt()
+            |
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("switch")})
             elem = CodeFirstSwitch()
             |
@@ -5222,8 +5229,8 @@ TemplateElements CodeFirstContent() :
             LOOKAHEAD(<ID> (<EQUALS> | <PLUS_EQUALS> | <MINUS_EQUALS> | <TIMES_EQUALS> | <DIV_EQUALS> | <MOD_EQUALS> | <CF_AND_EQUALS> | <CF_OR_EQUALS> | <CF_XOR_EQUALS> | <CF_LEFT_SHIFT_EQUALS> | <CF_RIGHT_SHIFT_EQUALS> | <PLUS_PLUS> | <MINUS_MINUS>))
             elem = CodeFirstAssignment(inMacro || inFunction ? Assignment.LOCAL : Assignment.NAMESPACE)
             |
-            // Macro/function call: identifier followed by arguments
-            LOOKAHEAD(<ID> <OPEN_PAREN>)
+            // Macro/function call: identifier (possibly dotted) followed by arguments
+            LOOKAHEAD(<ID> (<DOT> <ID>)* <OPEN_PAREN>)
             elem = CodeFirstCall()
         )
         {
@@ -5642,8 +5649,10 @@ TemplateElement CodeFirstSwitch() :
 TemplateElement CodeFirstCall() :
 {
     Token start;
+    Token t;
     Expression macroName;
-    ArrayList positionalArgs;
+    ArrayList positionalArgs = null;
+    HashMap namedArgs = null;
 }
 {
     start = <ID>
@@ -5651,13 +5660,57 @@ TemplateElement CodeFirstCall() :
         macroName = new Identifier(start.image);
         macroName.setLocation(template, start, start);
     }
+    (
+        <DOT>
+        t = <ID>
+        {
+            macroName = new Dot(macroName, t.image);
+            macroName.setLocation(template, start, t);
+        }
+    )*
     <OPEN_PAREN>
-    positionalArgs = PositionalArgs()
+    (
+        LOOKAHEAD(<ID> <EQUALS>)
+        namedArgs = CodeFirstNamedArgs()
+        |
+        positionalArgs = PositionalArgs()
+    )
     <CLOSE_PAREN>
     <CF_EOL>
     {
-        UnifiedCall result = new UnifiedCall(macroName, positionalArgs, TemplateElements.EMPTY, null);
+        UnifiedCall result;
+        if (namedArgs != null) {
+            result = new UnifiedCall(macroName, namedArgs, TemplateElements.EMPTY, null);
+        } else {
+            result = new UnifiedCall(macroName, positionalArgs, TemplateElements.EMPTY, null);
+        }
         result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Comma-separated named arguments for code-first macro calls: name=value, name2=value2
+ */
+HashMap CodeFirstNamedArgs() :
+{
+    HashMap result = new HashMap();
+    Token t;
+    Expression exp;
+}
+{
+    t = <ID>
+    <EQUALS>
+    exp = Expression()
+    { result.put(t.image, exp); }
+    (
+        <COMMA>
+        t = <ID>
+        <EQUALS>
+        exp = Expression()
+        { result.put(t.image, exp); }
+    )*
+    {
         return result;
     }
 }
@@ -5726,6 +5779,69 @@ TemplateElement CodeFirstEmit() :
             return result;
         }
     )
+}
+
+/**
+ * Code-first stop statement: stop "message"
+ */
+StopInstruction CodeFirstStop() :
+{
+    Token start;
+    Expression exp = null;
+}
+{
+    start = <ID>  // "stop"
+    [ exp = Expression() ]
+    <CF_EOL>
+    {
+        StopInstruction result = new StopInstruction(exp);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first attempt/recover block:
+ *   attempt
+ *     ...
+ *   recover
+ *     ...
+ *   endattempt
+ */
+AttemptBlock CodeFirstAttempt() :
+{
+    Token start;
+    TemplateElements children;
+    RecoveryBlock recoveryBlock;
+}
+{
+    start = <ID>  // "attempt"
+    <CF_EOL>
+    children = CodeFirstContent()
+    recoveryBlock = CodeFirstRecover()
+    <ID>  // "endattempt"
+    <CF_EOL>
+    {
+        AttemptBlock result = new AttemptBlock(children, recoveryBlock);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+RecoveryBlock CodeFirstRecover() :
+{
+    Token start;
+    TemplateElements children;
+}
+{
+    start = <ID>  // "recover"
+    <CF_EOL>
+    children = CodeFirstContent()
+    {
+        RecoveryBlock result = new RecoveryBlock(children);
+        result.setLocation(template, start, start, children);
+        return result;
+    }
 }
 
 TemplateElement CodeFirstAssignment(int scope) :
