@@ -164,6 +164,49 @@ This makes it natural to start the content on the line after `"""` without addin
 
 ---
 
+## End-of-Line Handling
+
+Code-first mode provides consistent, configurable end-of-line handling to prevent the template file's own line endings from leaking into generated output.
+
+### The `\e` escape — platform-independent EOL
+
+Use `\e` in string literals to produce the configured output EOL. Unlike `\n` (which always produces a literal `\n`), `\e` resolves at runtime to the `output_eol` setting:
+
+```
+emit "line1\eline2\e"
+```
+
+With the default `output_eol` (which is `"\n"`), this produces `line1\nline2\n`. With `output_eol` set to `"\r\n"`, it produces `line1\r\nline2\r\n`.
+
+| Escape | Meaning |
+|---|---|
+| `\n` | Always literal `\n` (Unix LF) |
+| `\e` | Configured EOL — resolves to `output_eol` at runtime |
+
+### Text block normalization
+
+Line endings inside text blocks (`emit """..."""`) are automatically normalized to the configured `output_eol`. This means a template edited on Windows (with `\r\n`) produces the same output as one edited on Unix (with `\n`) — the template file's line endings never leak through.
+
+### Configuring `output_eol`
+
+The default is `"\n"`. To change it:
+
+**Via configuration (Java):**
+
+```java
+cfg.setOutputEOL("\r\n");  // Windows line endings
+```
+
+**Via `setting` directive:**
+
+```
+setting output_eol = "\r\n"
+```
+
+The `\e` escape and text block normalization both work in classic mode too — only the text block normalization is code-first specific.
+
+---
+
 ## Variables and Assignment
 
 Assignment uses bare `name = value` syntax. Scoping is automatic:
@@ -698,6 +741,104 @@ endlist
 // Output:
 // int         count;                  // item count
 // String      name;                   // display name
+```
+
+### `?indent(prefix)`
+
+Prepends `prefix` to every non-empty line in the string. Blank lines are preserved without the prefix.
+
+```
+body = "int x;\nint y;\n"
+emit body?indent("    ")
+// Output:
+//     int x;
+//     int y;
+```
+
+```
+comment = "First line.\nSecond line."
+emit comment?indent(" * ")
+// Output:
+//  * First line.
+//  * Second line.
+```
+
+**Parameters:**
+
+| # | Type | Required | Description |
+|---|---|---|---|
+| 1 | string | yes | Prefix to prepend to each line |
+
+### `?dedent(prefix)`
+
+Removes `prefix` from the beginning of each line, if present. Lines that don't start with the prefix are left unchanged. Symmetric with `?indent`.
+
+```
+body = "    int x;\n    int y;\n"
+emit body?dedent("    ")
+// Output:
+// int x;
+// int y;
+```
+
+Lines without the prefix are untouched:
+
+```
+"  short\n    full\n"?dedent("    ")
+// Output:
+// "  short\n"   (only 2 spaces — no match, unchanged)
+// "full\n"      (4 spaces matched, removed)
+```
+
+Round-trip with `?indent`:
+
+```
+text?indent("  ")?dedent("  ")   // returns original text
+```
+
+**Parameters:**
+
+| # | Type | Required | Description |
+|---|---|---|---|
+| 1 | string | yes | Prefix to remove from each line |
+
+### `?wrap(width, firstPrefix, restPrefix)`
+
+Word-wraps the string to fit within `width` columns, using `firstPrefix` for the first line and `restPrefix` for subsequent lines. If `restPrefix` is omitted, `firstPrefix` is used for all lines. Output always ends with a newline.
+
+```
+text = "This is a long description that should be wrapped"
+emit text?wrap(40, " * @brief ", " *          ")
+// Output:
+//  * @brief This is a long description
+//  *          that should be wrapped
+```
+
+With a single prefix for all lines:
+
+```
+emit "A long comment that needs to be wrapped at a reasonable width"?wrap(40, "// ")
+// Output:
+// // A long comment that needs to be
+// // wrapped at a reasonable width
+```
+
+**Parameters:**
+
+| # | Type | Required | Description |
+|---|---|---|---|
+| 1 | number | yes | Maximum line width |
+| 2 | string | yes | Prefix for the first line |
+| 3 | string | no | Prefix for subsequent lines (default: same as first) |
+
+**Use case** — replacing manual word-wrapping functions. The `?wrap` built-in does what `FormatStringAsText` does in a single call:
+
+```
+// Before (manual function call):
+utils.FormatStringAsText(" * @brief ", " *          ", text, 80)
+
+// After (built-in):
+emit text?wrap(80, " * @brief ", " *          ")
 ```
 
 ---

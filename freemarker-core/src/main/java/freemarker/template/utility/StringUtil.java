@@ -39,7 +39,24 @@ import freemarker.template.Version;
  *  Some text related utilities.
  */
 public class StringUtil {
-    
+
+    /**
+     * Unicode noncharacter used as placeholder for the {@code \e} escape sequence.
+     * Resolved at evaluation time to the configured {@code output_eol} value.
+     */
+    public static final char OUTPUT_EOL_PLACEHOLDER = '\uFDD0';
+
+    /**
+     * Resolves {@link #OUTPUT_EOL_PLACEHOLDER} characters in a string, replacing them
+     * with the specified EOL string.
+     */
+    public static String resolveOutputEOL(String s, String outputEOL) {
+        if (s.indexOf(OUTPUT_EOL_PLACEHOLDER) == -1) {
+            return s;
+        }
+        return s.replace(String.valueOf(OUTPUT_EOL_PLACEHOLDER), outputEOL);
+    }
+
     /**
      *  Used to look up if the chars with low code needs to be escaped, but note that it gives bad result for '=', as
      *  there the it matters if it's after '['.
@@ -615,6 +632,10 @@ public class StringUtil {
                     break;
                 case 'a':
                     buf.append('&');
+                    bidx = idx + 2;
+                    break;
+                case 'e':
+                    buf.append(OUTPUT_EOL_PLACEHOLDER);
                     bidx = idx + 2;
                     break;
                 case '{':

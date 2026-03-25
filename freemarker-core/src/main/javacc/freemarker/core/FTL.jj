@@ -1278,7 +1278,7 @@ TOKEN:
     <#ESCAPED_CHAR :
         "\\"
         (
-            ("n" | "t" | "r" | "f" | "b" | "g" | "l" | "a" | "\\" | "'" | "\"" | "{" | "=")
+            ("n" | "t" | "r" | "f" | "b" | "g" | "l" | "a" | "e" | "\\" | "'" | "\"" | "{" | "=")
             |
             ("x" ["0"-"9", "A"-"F", "a"-"f"])
         )
@@ -5789,6 +5789,11 @@ TemplateElement CodeFirstEmit() :
                     }
                 }
             }
+            // Normalize line endings in text blocks to the output EOL placeholder.
+            // This ensures template file line endings don't leak into the output.
+            content = content.replace("\r\n", String.valueOf(freemarker.template.utility.StringUtil.OUTPUT_EOL_PLACEHOLDER));
+            content = content.replace("\r", String.valueOf(freemarker.template.utility.StringUtil.OUTPUT_EOL_PLACEHOLDER));
+            content = content.replace("\n", String.valueOf(freemarker.template.utility.StringUtil.OUTPUT_EOL_PLACEHOLDER));
             // Create a StringLiteral from the content and process interpolations
             StringLiteral sl = new StringLiteral(content);
             sl.setLocation(template, textBlock, textBlock);

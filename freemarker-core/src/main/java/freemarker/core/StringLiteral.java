@@ -87,6 +87,10 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
     @Override
     TemplateModel _eval(Environment env) throws TemplateException {
         if (dynamicValue == null) {
+            if (env != null && value.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) != -1) {
+                return new SimpleScalar(StringUtil.resolveOutputEOL(value,
+                        env.getConfiguration().getOutputEOL()));
+            }
             return new SimpleScalar(value);
         } else {
             // This should behave like concatenating the values with `+`. Thus, an interpolated expression that
@@ -97,9 +101,10 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
             StringBuilder plainTextResult = null;
             TemplateMarkupOutputModel<?> markupResult = null;
             
+            String outputEOL = env != null ? env.getConfiguration().getOutputEOL() : "\n";
             for (Object part : dynamicValue) {
                 Object calcedPart =
-                        part instanceof String ? part
+                        part instanceof String ? StringUtil.resolveOutputEOL((String) part, outputEOL)
                         : ((Interpolation) part).calculateInterpolatedStringOrMarkup(env);
                 if (markupResult != null) {
                     TemplateMarkupOutputModel<?> partMO = calcedPart instanceof String
@@ -172,7 +177,7 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
     
     @Override
     boolean isLiteral() {
-        return dynamicValue == null;
+        return dynamicValue == null && value.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) == -1;
     }
 
     @Override

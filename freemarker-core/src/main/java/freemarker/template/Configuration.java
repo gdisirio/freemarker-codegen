@@ -571,6 +571,7 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     private int namingConvention = AUTO_DETECT_NAMING_CONVENTION;
     private int tabSize = 8;  // Default from JavaCC 3.x
     private boolean codeFirstMode;
+    private String outputEOL = "\n";
     private boolean fallbackOnNullLoopVariable = true;  // Default for backward compatibility
     private boolean preventStrippings;
 
@@ -2811,6 +2812,27 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     @Override
     public boolean getCodeFirstMode() {
         return codeFirstMode;
+    }
+
+    /**
+     * Sets the end-of-line string used in code-first mode for the {@code \e} escape sequence
+     * and for line endings inside text blocks ({@code emit """..."""}).
+     * Defaults to {@code "\n"}.
+     *
+     * @since 2.3.35
+     */
+    public void setOutputEOL(String outputEOL) {
+        if (outputEOL == null) throw new IllegalArgumentException("outputEOL cannot be null");
+        this.outputEOL = outputEOL;
+    }
+
+    /**
+     * The getter pair of {@link #setOutputEOL(String)}.
+     *
+     * @since 2.3.35
+     */
+    public String getOutputEOL() {
+        return outputEOL;
     }
 
     /**
