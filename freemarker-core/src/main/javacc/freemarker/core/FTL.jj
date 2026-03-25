@@ -442,7 +442,8 @@ public class FMParser {
             return img.equals("else") || img.equals("elseif") || img.equals("case") || img.equals("default")
                     || img.equals("endif") || img.equals("endlist") || img.equals("endmacro")
                     || img.equals("endfunction") || img.equals("endswitch") || img.equals("endsep")
-                    || img.equals("recover") || img.equals("endattempt");
+                    || img.equals("recover") || img.equals("endattempt")
+                    || img.equals("enditems") || img.equals("endautoesc") || img.equals("endnoautoesc");
         }
         return false;
     }
@@ -5214,6 +5215,33 @@ TemplateElements CodeFirstContent() :
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("attempt")})
             elem = CodeFirstAttempt()
             |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("nested")})
+            elem = CodeFirstNested()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("flush")})
+            elem = CodeFirstFlush()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("setting")})
+            elem = CodeFirstSetting()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("visit")})
+            elem = CodeFirstVisit()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("recurse")})
+            elem = CodeFirstRecurse()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("fallback")})
+            elem = CodeFirstFallback()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("items")})
+            elem = CodeFirstItems()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("autoesc")})
+            elem = CodeFirstAutoEsc()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("noautoesc")})
+            elem = CodeFirstNoAutoEsc()
+            |
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("switch")})
             elem = CodeFirstSwitch()
             |
@@ -5840,6 +5868,263 @@ RecoveryBlock CodeFirstRecover() :
     {
         RecoveryBlock result = new RecoveryBlock(children);
         result.setLocation(template, start, start, children);
+        return result;
+    }
+}
+
+/**
+ * Code-first nested: nested [args]
+ */
+TemplateElement CodeFirstNested() :
+{
+    Token start;
+    ArrayList bodyParameters = null;
+}
+{
+    start = <ID>  // "nested"
+    bodyParameters = PositionalArgs()
+    <CF_EOL>
+    {
+        if (!inMacro) {
+            throw new ParseException("Cannot use nested outside a macro.", template, start);
+        }
+        BodyInstruction result = new BodyInstruction(bodyParameters.isEmpty() ? null : bodyParameters);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first flush
+ */
+TemplateElement CodeFirstFlush() :
+{
+    Token start;
+}
+{
+    start = <ID>  // "flush"
+    <CF_EOL>
+    {
+        FlushInstruction result = new FlushInstruction();
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first setting: setting name = value
+ */
+PropertySetting CodeFirstSetting() :
+{
+    Token start, key;
+    Expression value;
+}
+{
+    start = <ID>  // "setting"
+    key = <ID>
+    <EQUALS>
+    value = Expression()
+    <CF_EOL>
+    {
+        token_source.checkNamingConvention(key);
+        PropertySetting result = new PropertySetting(key, token_source, value, template.getConfiguration());
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first visit: visit node [using namespace]
+ */
+VisitNode CodeFirstVisit() :
+{
+    Token start;
+    Expression targetNode, namespaces = null;
+}
+{
+    start = <ID>  // "visit"
+    targetNode = Expression()
+    [
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("using")})
+        <ID>  // "using"
+        namespaces = Expression()
+    ]
+    <CF_EOL>
+    {
+        VisitNode result = new VisitNode(targetNode, namespaces);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first recurse: recurse [node] [using namespace]
+ */
+RecurseNode CodeFirstRecurse() :
+{
+    Token start;
+    Expression node = null, namespaces = null;
+}
+{
+    start = <ID>  // "recurse"
+    [
+        LOOKAHEAD({getToken(1).kind != CF_EOL && !(getToken(1).kind == ID && getToken(1).image.equals("using"))})
+        node = Expression()
+    ]
+    [
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("using")})
+        <ID>  // "using"
+        namespaces = Expression()
+    ]
+    <CF_EOL>
+    {
+        RecurseNode result = new RecurseNode(node, namespaces);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first fallback
+ */
+FallbackInstruction CodeFirstFallback() :
+{
+    Token start;
+}
+{
+    start = <ID>  // "fallback"
+    <CF_EOL>
+    {
+        if (!inMacro) {
+            throw new ParseException("Cannot fall back outside a macro.", template, start);
+        }
+        FallbackInstruction result = new FallbackInstruction();
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Code-first items: items as loopVar [, loopVar2] ... enditems
+ */
+Items CodeFirstItems() :
+{
+    Token loopVar, loopVar2 = null, start, end;
+    TemplateElements children;
+    ParserIteratorBlockContext iterCtx;
+}
+{
+    start = <ID>  // "items"
+    <AS>
+    loopVar = <ID>
+    [
+        <COMMA>
+        loopVar2 = <ID>
+    ]
+    <CF_EOL>
+    {
+        iterCtx = peekIteratorBlockContext();
+        if (iterCtx == null) {
+            throw new ParseException("items must be inside a list block.", template, start);
+        }
+        if (iterCtx.loopVarName != null) {
+            String msg;
+            if (iterCtx.kind == ITERATOR_BLOCK_KIND_ITEMS) {
+                msg = "Can't nest items into each other when they belong to the same list.";
+            } else {
+                msg = "The parent list of the items must not have \"as loopVar\" parameter.";
+            }
+            throw new ParseException(msg, template, start);
+        }
+        iterCtx.kind = ITERATOR_BLOCK_KIND_ITEMS;
+        iterCtx.loopVarName = loopVar.image;
+        if (loopVar2 != null) {
+            iterCtx.loopVar2Name = loopVar2.image;
+            iterCtx.hashListing = true;
+            if (iterCtx.loopVar2Name.equals(iterCtx.loopVarName)) {
+                throw new ParseException(
+                        "The key and value loop variable names must differ, but both were: " + iterCtx.loopVarName,
+                        template, start);
+            }
+        }
+
+        breakableDirectiveNesting++;
+        continuableDirectiveNesting++;
+    }
+
+    children = CodeFirstContent()
+
+    end = <ID>  // "enditems"
+    [ <CF_EOL> ]
+    {
+        breakableDirectiveNesting--;
+        continuableDirectiveNesting--;
+        iterCtx.loopVarName = null;
+        iterCtx.loopVar2Name = null;
+
+        Items result = new Items(loopVar.image, loopVar2 != null ? loopVar2.image : null, children);
+        result.setLocation(template, start, end);
+        return result;
+    }
+}
+
+/**
+ * Code-first autoesc block: autoesc ... endautoesc
+ */
+AutoEscBlock CodeFirstAutoEsc() :
+{
+    Token start, end;
+    TemplateElements children;
+    int lastAutoEscapingPolicy;
+}
+{
+    start = <ID>  // "autoesc"
+    <CF_EOL>
+    {
+        checkCurrentOutputFormatCanEscape(start);
+        lastAutoEscapingPolicy = autoEscapingPolicy;
+        autoEscapingPolicy = Configuration.ENABLE_IF_SUPPORTED_AUTO_ESCAPING_POLICY;
+        recalculateAutoEscapingField();
+    }
+    children = CodeFirstContent()
+    end = <ID>  // "endautoesc"
+    [ <CF_EOL> ]
+    {
+        AutoEscBlock result = new AutoEscBlock(children);
+        result.setLocation(template, start, end);
+
+        autoEscapingPolicy = lastAutoEscapingPolicy;
+        recalculateAutoEscapingField();
+        return result;
+    }
+}
+
+/**
+ * Code-first noautoesc block: noautoesc ... endnoautoesc
+ */
+NoAutoEscBlock CodeFirstNoAutoEsc() :
+{
+    Token start, end;
+    TemplateElements children;
+    int lastAutoEscapingPolicy;
+}
+{
+    start = <ID>  // "noautoesc"
+    <CF_EOL>
+    {
+        lastAutoEscapingPolicy = autoEscapingPolicy;
+        autoEscapingPolicy = Configuration.DISABLE_AUTO_ESCAPING_POLICY;
+        recalculateAutoEscapingField();
+    }
+    children = CodeFirstContent()
+    end = <ID>  // "endnoautoesc"
+    [ <CF_EOL> ]
+    {
+        NoAutoEscBlock result = new NoAutoEscBlock(children);
+        result.setLocation(template, start, end);
+
+        autoEscapingPolicy = lastAutoEscapingPolicy;
+        recalculateAutoEscapingField();
         return result;
     }
 }

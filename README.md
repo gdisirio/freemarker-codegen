@@ -232,6 +232,10 @@ Block directives use keyword syntax with `/keyword` closers. Every closing tag a
 | `/function` | `endfunction` |
 | `/switch` | `endswitch` |
 | `/sep` | `endsep` |
+| `/items` | `enditems` |
+| `/attempt` | `endattempt` |
+| `/autoesc` | `endautoesc` |
+| `/noautoesc` | `endnoautoesc` |
 
 ### if / elseif / else
 
@@ -305,6 +309,22 @@ endlist
 // Output: a, b, c
 ```
 
+### items
+
+The alternate `list` form uses `items` to separate the iterable expression from the loop variable. This allows content before and after the loop, and an `else` that fires when the list is empty:
+
+```
+list users
+  emit "<ul>\n"
+  items as user
+    emit "  <li>${user.name}</li>\n"
+  enditems
+  emit "</ul>\n"
+else
+  emit "<p>No users.</p>\n"
+endlist
+```
+
 ### switch / case / default
 
 ```
@@ -364,11 +384,51 @@ emit max(10, 20)?c
 
 ### Calling macros and functions
 
-Use `name(args)` syntax:
+Use `name(args)` syntax with positional or named arguments:
 
 ```
 greet("World")
 x = add(1, 2)
+```
+
+Namespace-qualified calls use dot notation:
+
+```
+import "lib/utils.ftlc" as u
+u.formatText("hello", 80)
+```
+
+Named arguments use `name=value` syntax, separated by commas:
+
+```
+generatePrototype(
+  name   = "myFunc",
+  ctype  = "void",
+  params = ["int a", "int b"]
+)
+```
+
+### nested
+
+Inside a macro, `nested` outputs the caller-provided body content:
+
+```
+macro wrapper(title)
+  emit "<div class=\"box\">\n"
+  emit "  <h2>${title}</h2>\n"
+  nested
+  emit "</div>\n"
+endmacro
+```
+
+`nested` can also pass loop variables back to the caller:
+
+```
+macro repeat(count)
+  list 1..count as i
+    nested i
+  endlist
+endmacro
 ```
 
 ---
@@ -410,6 +470,29 @@ macro conditionalGreet(name)
 endmacro
 ```
 
+### stop
+
+Aborts template processing with an error message:
+
+```
+if !requiredParam??
+  stop "Missing required parameter: requiredParam"
+endif
+```
+
+### attempt / recover
+
+Error handling — if the `attempt` block fails, execution continues in the `recover` block:
+
+```
+attempt
+  result = riskyOperation()
+recover
+  emit "Operation failed, using default.\n"
+  result = defaultValue
+endattempt
+```
+
 ---
 
 ## import and include
@@ -417,6 +500,67 @@ endmacro
 ```
 import "lib/utils.ftl" as u
 include "header.ftl"
+```
+
+---
+
+## XML/Tree Processing
+
+### visit and recurse
+
+`visit` dispatches to a macro matching the node's name. `recurse` processes child nodes. Both accept an optional `using` clause to specify the namespace containing the handler macros:
+
+```
+visit node
+visit node using handlers
+recurse
+recurse node
+recurse node using handlers
+```
+
+### fallback
+
+Inside a macro invoked by `visit`, `fallback` delegates to the next namespace in the search order:
+
+```
+macro @element
+  fallback
+endmacro
+```
+
+---
+
+## Other Directives
+
+### flush
+
+Forces the output buffer to be flushed:
+
+```
+flush
+```
+
+### setting
+
+Changes a runtime setting for the remainder of the template:
+
+```
+setting number_format = "0.##"
+setting locale = "en_US"
+```
+
+### autoesc / noautoesc
+
+Controls auto-escaping within a block:
+
+```
+autoesc
+  emit message    // escaped according to output format
+endautoesc
+
+noautoesc
+  emit rawHtml    // no escaping
+endnoautoesc
 ```
 
 ---
@@ -612,10 +756,22 @@ emit "}\n"
 | `<#import "x" as y>` | `import "x" as y` |
 | `<#include "x">` | `include "x"` |
 | `<#switch x>...</#switch>` | `switch x`...`/switch` or `endswitch` |
+| `<#nested>` | `nested` |
+| `<#stop "msg">` | `stop "msg"` |
+| `<#attempt>...<#recover>...</#attempt>` | `attempt`...`recover`...`endattempt` |
+| `<#items as x>...</#items>` | `items as x`...`enditems` |
+| `<#visit node>` | `visit node` |
+| `<#recurse>` | `recurse` |
+| `<#fallback>` | `fallback` |
+| `<#flush>` | `flush` |
+| `<#setting k=v>` | `setting k = v` |
+| `<#autoesc>...</#autoesc>` | `autoesc`...`endautoesc` |
+| `<#noautoesc>...</#noautoesc>` | `noautoesc`...`endnoautoesc` |
 | `${expr}` | `emit expr` |
 | `<#-- comment -->` | `// comment` or `/* comment */` |
 | `text` (direct output) | `emit "text"` or `emit """text"""` |
 | Multi-line text | `emit """..."""` (text block) |
+| `@macro args` | `macro(args)` or `ns.macro(args)` |
 | `0xFF` (not supported) | `0xFF` (both modes) |
 | (not available) | `&`, `\|`, `^`, `~`, `<<`, `>>` (bitwise) |
 | (not available) | `&=`, `\|=`, `^=`, `<<=`, `>>=` (bitwise assign) |
