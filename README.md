@@ -109,19 +109,35 @@ In code-first mode, text is not output by default. Use the `emit` keyword to pro
 
 ### Single expression
 
-`emit` followed by any expression outputs its value:
+`emit` is followed by an arbitrary expression — its value is written to the output. This can be a string literal, a variable, a function call, or any composition of these:
 
 ```
-emit "Hello, World!\n"
-emit x?c
-emit someFunction()
+emit "Hello, World!\n"     // string literal
+emit x?c                   // variable with built-in
+emit someFunction()        // function call
+emit "a" + " " + "b"       // string concatenation
 ```
 
-String literals support interpolation with `${...}`:
+String literals support `${...}` interpolation:
 
 ```
 name = "Alice"
 emit "Hello, ${name}!\n"
+```
+
+Interpolation is a property of the string literal itself — it works in **any** string literal, not just in `emit`. For example in assignments, function arguments, or sequence/hash literals:
+
+```
+greeting = "Hello, ${name}!"
+items    = ["file-${id}.txt", "backup-${id}.bak"]
+format(prefix = "[${level}] ")
+```
+
+Interpolation and concatenation are equivalent — pick whichever reads better:
+
+```
+emit "Count: ${n}, total: ${total}\n"
+emit "Count: " + n + ", total: " + total + "\n"
 ```
 
 ### Text blocks with `"""`
