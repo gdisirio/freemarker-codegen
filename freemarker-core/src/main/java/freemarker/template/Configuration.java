@@ -572,6 +572,7 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     private int tabSize = 8;  // Default from JavaCC 3.x
     private boolean codeFirstMode;
     private String outputEOL = "\n";
+    private java.io.File outputBaseDirectory;
     private boolean fallbackOnNullLoopVariable = true;  // Default for backward compatibility
     private boolean preventStrippings;
 
@@ -2833,6 +2834,27 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
      */
     public String getOutputEOL() {
         return outputEOL;
+    }
+
+    /**
+     * Sets the base directory used to resolve relative output paths in
+     * {@code emit ... to "<path>"} directives. Absolute paths are unaffected.
+     * If {@code null} (the default), relative paths are resolved against the
+     * current working directory.
+     *
+     * @since 2.3.35
+     */
+    public void setOutputBaseDirectory(java.io.File outputBaseDirectory) {
+        this.outputBaseDirectory = outputBaseDirectory;
+    }
+
+    /**
+     * The getter pair of {@link #setOutputBaseDirectory(java.io.File)}.
+     *
+     * @since 2.3.35
+     */
+    public java.io.File getOutputBaseDirectory() {
+        return outputBaseDirectory;
     }
 
     /**

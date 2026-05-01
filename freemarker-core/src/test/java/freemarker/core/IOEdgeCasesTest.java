@@ -149,4 +149,40 @@ public class IOEdgeCasesTest {
         process(tmpl);
         assertEquals("line1\nline2\n", new String(Files.readAllBytes(f.toPath())));
     }
+
+    @Test
+    public void testRelativePathResolvedAgainstOutputBaseDirectory() throws Exception {
+        Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
+        cfg.setCodeFirstMode(true);
+        cfg.setOutputBaseDirectory(tmp.getRoot());
+
+        Template t = new Template("test.ftl", new StringReader("emit \"hello\" to \"out.txt\"\n"), cfg);
+        StringWriter sw = new StringWriter();
+        t.process(new HashMap<String, Object>(), sw);
+
+        // Relative path "out.txt" should resolve under tmp.getRoot()
+        File expected = new File(tmp.getRoot(), "out.txt");
+        assertTrue("File should exist at output base dir / relative path", expected.exists());
+        assertEquals("hello", new String(Files.readAllBytes(expected.toPath())));
+    }
+
+    @Test
+    public void testAbsolutePathIgnoresOutputBaseDirectory() throws Exception {
+        File outDir = tmp.newFolder("outdir");
+        File abs = new File(tmp.getRoot(), "absolute.txt");
+
+        Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
+        cfg.setCodeFirstMode(true);
+        cfg.setOutputBaseDirectory(outDir);
+
+        Template t = new Template("test.ftl",
+                new StringReader("emit \"absolute path\" to \"" + abs.getAbsolutePath() + "\"\n"), cfg);
+        StringWriter sw = new StringWriter();
+        t.process(new HashMap<String, Object>(), sw);
+
+        // Absolute path should write directly to that location, ignoring the base dir
+        assertEquals("absolute path", new String(Files.readAllBytes(abs.toPath())));
+        // Nothing should be written under outDir
+        assertFalse("nothing in outDir", new File(outDir, "absolute.txt").exists());
+    }
 }

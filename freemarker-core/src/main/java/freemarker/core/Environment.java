@@ -1558,10 +1558,19 @@ public final class Environment extends Configurable {
 
     /**
      * Normalizes a path string to its canonical form for use as a map key.
+     * Relative paths are resolved against the configured output base directory
+     * (if set), or against the current working directory otherwise.
      * Resolves "." and ".." but does not resolve symlinks.
      */
-    private static String normalizePath(String path) {
-        return Paths.get(path).toAbsolutePath().normalize().toString();
+    private String normalizePath(String path) {
+        Path p = Paths.get(path);
+        if (!p.isAbsolute()) {
+            java.io.File baseDir = getConfiguration().getOutputBaseDirectory();
+            if (baseDir != null) {
+                p = baseDir.toPath().resolve(p);
+            }
+        }
+        return p.toAbsolutePath().normalize().toString();
     }
 
     /**

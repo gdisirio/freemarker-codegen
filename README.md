@@ -329,7 +329,11 @@ Stdin is single-pass and not seekable. A second `readln from stdin` after the fi
 
 ### Configuration knobs
 
-- File paths are resolved relative to the current working directory when the template runs
+- **Output base directory**: relative paths in `emit ... to "<path>"` are resolved against the configured output base directory. If unset (default), they're resolved against the JVM's current working directory.
+  ```java
+  cfg.setOutputBaseDirectory(new File("build/generated"));
+  ```
+  Absolute paths are unaffected.
 - All output flows through the same `output_eol` and `\e` resolution as the main `emit` (see below)
 - Writes use UTF-8 encoding by default
 
