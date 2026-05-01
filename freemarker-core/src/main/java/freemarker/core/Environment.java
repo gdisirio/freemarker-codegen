@@ -1545,6 +1545,21 @@ public final class Environment extends Configurable {
     }
 
     /**
+     * Flushes the default writer and all open auxiliary writers.
+     * Used by {@code flush all}.
+     *
+     * @since 2.3.35
+     */
+    void flushAllWriters() throws IOException {
+        out.flush();
+        if (auxiliaryWriters != null) {
+            for (Writer w : auxiliaryWriters.values()) {
+                w.flush();
+            }
+        }
+    }
+
+    /**
      * Removes a reader from the cleanup list (e.g., when iteration completes normally
      * and the reader has already been closed).
      *

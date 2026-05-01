@@ -6018,17 +6018,31 @@ TemplateElement CodeFirstNested() :
 }
 
 /**
- * Code-first flush
+ * Code-first flush:
+ *   flush                — flush the default writer
+ *   flush to &lt;target&gt;     — flush a specific target
+ *   flush all            — flush the default writer and all auxiliary writers
  */
 TemplateElement CodeFirstFlush() :
 {
     Token start;
+    Expression target = null;
+    boolean flushAll = false;
 }
 {
     start = <ID>  // "flush"
+    [
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("all")})
+        <ID>  // "all"
+        { flushAll = true; }
+        |
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("to")})
+        <ID>  // "to"
+        target = CodeFirstTarget()
+    ]
     <CF_EOL>
     {
-        FlushInstruction result = new FlushInstruction();
+        FlushInstruction result = new FlushInstruction(target, flushAll);
         result.setLocation(template, start, start);
         return result;
     }

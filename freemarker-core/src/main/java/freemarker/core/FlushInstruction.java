@@ -20,40 +20,99 @@
 package freemarker.core;
 
 import java.io.IOException;
+import java.io.Writer;
+
+import freemarker.template.TemplateException;
+import freemarker.template.TemplateModel;
+import freemarker.template.TemplateScalarModel;
 
 /**
- * An instruction that flushes the output stream.
+ * An instruction that flushes the output stream(s).
+ *
+ * <p>Three forms in code-first mode:
+ * <ul>
+ *   <li>{@code flush} — flushes the default writer (legacy behavior)</li>
+ *   <li>{@code flush to <target>} — flushes a specific target (path / stdout / stderr / default)</li>
+ *   <li>{@code flush all} — flushes the default writer and all auxiliary writers</li>
+ * </ul>
+ *
+ * <p>Classic {@code <#flush>} always uses the default-only form.
  */
 final class FlushInstruction extends TemplateElement {
 
+    /** Target expression. Null means: flush the default writer. */
+    private final Expression target;
+
+    /** If true, flush the default writer and all open auxiliary writers. */
+    private final boolean flushAll;
+
+    FlushInstruction() {
+        this.target = null;
+        this.flushAll = false;
+    }
+
+    FlushInstruction(Expression target, boolean flushAll) {
+        this.target = target;
+        this.flushAll = flushAll;
+    }
+
     @Override
-    TemplateElement[] accept(Environment env) throws IOException {
-        env.getOut().flush();
+    TemplateElement[] accept(Environment env) throws IOException, TemplateException {
+        if (flushAll) {
+            env.flushAllWriters();
+        } else if (target == null) {
+            env.getOut().flush();
+        } else {
+            String t = evalTarget(env);
+            Writer w = env.getWriterForTarget(t);
+            w.flush();
+        }
         return null;
+    }
+
+    private String evalTarget(Environment env) throws TemplateException {
+        TemplateModel m = target.eval(env);
+        if (!(m instanceof TemplateScalarModel)) {
+            throw new _MiscTemplateException(target, env,
+                    "The target of 'flush to' must be a string, but was: ",
+                    m == null ? "null" : m.getClass().getName());
+        }
+        return ((TemplateScalarModel) m).getAsString();
     }
 
     @Override
     protected String dump(boolean canonical) {
-        return canonical ? "<" + getNodeTypeSymbol() + "/>" : getNodeTypeSymbol();
+        StringBuilder sb = new StringBuilder();
+        if (canonical) sb.append('<');
+        sb.append(getNodeTypeSymbol());
+        if (flushAll) {
+            sb.append(" all");
+        } else if (target != null) {
+            sb.append(" to ").append(target.getCanonicalForm());
+        }
+        if (canonical) sb.append("/>");
+        return sb.toString();
     }
-    
+
     @Override
     String getNodeTypeSymbol() {
         return "#flush";
     }
- 
+
     @Override
     int getParameterCount() {
-        return 0;
+        return target != null ? 1 : 0;
     }
 
     @Override
     Object getParameterValue(int idx) {
+        if (idx == 0 && target != null) return target;
         throw new IndexOutOfBoundsException();
     }
 
     @Override
     ParameterRole getParameterRole(int idx) {
+        if (idx == 0 && target != null) return ParameterRole.VALUE;
         throw new IndexOutOfBoundsException();
     }
 
@@ -61,5 +120,5 @@ final class FlushInstruction extends TemplateElement {
     boolean isNestedBlockRepeater() {
         return false;
     }
-    
+
 }

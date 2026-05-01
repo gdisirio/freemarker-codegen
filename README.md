@@ -769,11 +769,16 @@ endmacro
 
 ### flush
 
-Forces the output buffer to be flushed:
+Forces output buffers to be flushed:
 
 ```
-flush
+flush                  // flush the default writer
+flush to "build/log"   // flush a specific auxiliary writer (file path)
+flush to stderr        // flush a predefined target
+flush all              // flush the default writer AND all auxiliary writers
 ```
+
+Useful for long-running code generators where you want progress to be visible incrementally, or for crash safety: `flush all` after each unit of work means partial output survives an unexpected termination. Note that this is a buffer flush — it doesn't `fsync` to disk.
 
 ### setting
 
