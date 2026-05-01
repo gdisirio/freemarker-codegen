@@ -1880,23 +1880,76 @@ Expression AtomicExpression() :
 {
     (
         exp = NumberLiteral()
-        |   
+        |
         exp = HashLiteral()
-        |   
+        |
         exp = StringLiteral(true)
-        |   
+        |
         exp = BooleanLiteral()
-        |   
+        |
         exp = ListLiteral()
-        |   
+        |
+        // read from <target> — eager string read
+        LOOKAHEAD({
+            getToken(1).kind == ID && getToken(1).image.equals("read") &&
+            getToken(2).kind == ID && getToken(2).image.equals("from")
+        })
+        exp = ReadFromExpr()
+        |
+        // readln from <target> — lazy line collection
+        LOOKAHEAD({
+            getToken(1).kind == ID && getToken(1).image.equals("readln") &&
+            getToken(2).kind == ID && getToken(2).image.equals("from")
+        })
+        exp = ReadlnFromExpr()
+        |
         exp = Identifier()
-        |   
+        |
         exp = Parenthesis()
-        |   
+        |
         exp = BuiltinVariable()
     )
     {
         return exp;
+    }
+}
+
+/**
+ * Read expression: {@code read from <target>} where target is a reserved
+ * keyword (stdin) or any string-valued expression.
+ */
+Expression ReadFromExpr() :
+{
+    Token start;
+    Expression target;
+}
+{
+    start = <ID>  // "read"
+    <ID>          // "from"
+    target = CodeFirstTarget()
+    {
+        ReadExpression result = new ReadExpression(target);
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
+/**
+ * Readln expression: {@code readln from <target>} returns a lazy collection.
+ */
+Expression ReadlnFromExpr() :
+{
+    Token start;
+    Expression target;
+}
+{
+    start = <ID>  // "readln"
+    <ID>          // "from"
+    target = CodeFirstTarget()
+    {
+        ReadlnExpression result = new ReadlnExpression(target);
+        result.setLocation(template, start, start);
+        return result;
     }
 }
 
@@ -5759,6 +5812,7 @@ TemplateElement CodeFirstEmit() :
     Token start;
     Token textBlock;
     Expression exp;
+    Expression target = null;
 }
 {
     start = <ID> // "emit"
@@ -5766,7 +5820,6 @@ TemplateElement CodeFirstEmit() :
         LOOKAHEAD(<CF_TEXT_BLOCK_OPEN>)
         <CF_TEXT_BLOCK_OPEN>
         textBlock = <CF_TEXT_BLOCK_CONTENT>
-        [ <CF_EOL> ]
         {
             // Extract content: token image includes accumulated text + closing """
             String raw = textBlock.image;
@@ -5799,23 +5852,82 @@ TemplateElement CodeFirstEmit() :
             sl.setLocation(template, textBlock, textBlock);
             sl.parseValue(this, outputFormat);
             exp = sl;
-            DollarVariable result = new DollarVariable(
-                    exp, escapedExpression(exp),
-                    outputFormat,
-                    autoEscaping);
-            result.setLocation(template, start, textBlock);
-            return result;
+        }
+        [
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("to")})
+            <ID>  // "to"
+            target = CodeFirstTarget()
+        ]
+        <CF_EOL>
+        {
+            if (target != null) {
+                EmitToDirective result = new EmitToDirective(escapedExpression(exp), target);
+                result.setLocation(template, start, textBlock);
+                return result;
+            } else {
+                DollarVariable result = new DollarVariable(
+                        exp, escapedExpression(exp),
+                        outputFormat,
+                        autoEscaping);
+                result.setLocation(template, start, textBlock);
+                return result;
+            }
         }
         |
         exp = Expression()
+        [
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("to")})
+            <ID>  // "to"
+            target = CodeFirstTarget()
+        ]
         <CF_EOL>
         {
-            DollarVariable result = new DollarVariable(
-                    exp, escapedExpression(exp),
-                    outputFormat,
-                    autoEscaping);
-            result.setLocation(template, start, start);
-            return result;
+            if (target != null) {
+                EmitToDirective result = new EmitToDirective(escapedExpression(exp), target);
+                result.setLocation(template, start, start);
+                return result;
+            } else {
+                DollarVariable result = new DollarVariable(
+                        exp, escapedExpression(exp),
+                        outputFormat,
+                        autoEscaping);
+                result.setLocation(template, start, start);
+                return result;
+            }
+        }
+    )
+}
+
+/**
+ * Code-first I/O target: a reserved keyword (default, stdout, stderr, stdin)
+ * or any string-valued expression.
+ */
+Expression CodeFirstTarget() :
+{
+    Token t;
+    Expression exp;
+}
+{
+    (
+        LOOKAHEAD({
+            getToken(1).kind == ID && (
+                getToken(1).image.equals("default") ||
+                getToken(1).image.equals("stdout") ||
+                getToken(1).image.equals("stderr") ||
+                getToken(1).image.equals("stdin")
+            )
+        })
+        t = <ID>
+        {
+            // Reserved target name: parse as a constant string literal
+            StringLiteral lit = new StringLiteral(t.image);
+            lit.setLocation(template, t, t);
+            return lit;
+        }
+        |
+        exp = Expression()
+        {
+            return exp;
         }
     )
 }

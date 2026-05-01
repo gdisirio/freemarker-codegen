@@ -19,10 +19,19 @@
 
 package freemarker.core;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.Closeable;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.text.Collator;
@@ -190,6 +199,20 @@ public final class Environment extends Configurable {
     private TemplateProcessingTracer templateProcessingTracer;
 
     /**
+     * Code-first auxiliary output writers, keyed by normalized absolute path.
+     * Lazily opened in truncate mode on first {@code emit ... to "path"} for that path.
+     * Closed when the Environment finishes processing.
+     */
+    private Map<String, Writer> auxiliaryWriters;
+
+    /**
+     * Code-first auxiliary input readers awaiting close. Each {@code readln from "path"} or
+     * {@code read from "path"} call registers its reader here so that it gets closed even
+     * if the template terminates abnormally before iteration completes.
+     */
+    private List<Closeable> auxiliaryReaders;
+
+    /**
      * Retrieves the environment object associated with the current thread, or {@code null} if there's no template
      * processing going on in this thread. Data model implementations that need access to the environment can call this
      * method to obtain the environment object that represents the template processing that is currently running on the
@@ -328,6 +351,7 @@ public final class Environment extends Configurable {
             } finally {
                 // It's just to allow the GC to free memory...
                 clearCachedValues();
+                closeAuxiliaryStreams();
             }
         } finally {
             threadEnv.set(savedEnv);
@@ -1440,6 +1464,132 @@ public final class Environment extends Configurable {
 
     public Writer getOut() {
         return out;
+    }
+
+    /**
+     * Code-first I/O target keywords.
+     */
+    static final String TARGET_DEFAULT = "default";
+    static final String TARGET_STDOUT = "stdout";
+    static final String TARGET_STDERR = "stderr";
+    static final String TARGET_STDIN = "stdin";
+
+    /**
+     * Resolves a target name to a Writer. Reserved names: "default", "stdout", "stderr".
+     * Any other value is treated as a file path; the file is opened on first request
+     * (in truncate mode) and the handle is cached for subsequent writes.
+     *
+     * @since 2.3.35
+     */
+    Writer getWriterForTarget(String target) throws IOException {
+        if (target == null || TARGET_DEFAULT.equals(target)) {
+            return out;
+        }
+        if (TARGET_STDOUT.equals(target)) {
+            return new OutputStreamWriter(System.out);
+        }
+        if (TARGET_STDERR.equals(target)) {
+            return new OutputStreamWriter(System.err);
+        }
+        // Treat as a file path
+        String key = normalizePath(target);
+        if (auxiliaryWriters == null) {
+            auxiliaryWriters = new HashMap<String, Writer>();
+        }
+        Writer w = auxiliaryWriters.get(key);
+        if (w == null) {
+            // Ensure parent directories exist
+            Path p = Paths.get(key);
+            Path parent = p.getParent();
+            if (parent != null) {
+                java.nio.file.Files.createDirectories(parent);
+            }
+            w = new BufferedWriter(new FileWriter(key));
+            auxiliaryWriters.put(key, w);
+        }
+        return w;
+    }
+
+    /**
+     * Opens a reader for a target. Reserved names: "stdin". Any other value is treated
+     * as a file path. Each call returns a fresh reader (independent reads on the same
+     * file are allowed). The reader is registered for cleanup if the Environment
+     * terminates before it's closed.
+     *
+     * @since 2.3.35
+     */
+    BufferedReader openReaderForTarget(String target) throws IOException {
+        if (target == null) {
+            throw new IllegalArgumentException("target cannot be null");
+        }
+        BufferedReader reader;
+        if (TARGET_STDIN.equals(target)) {
+            reader = new BufferedReader(new InputStreamReader(System.in));
+        } else {
+            String key = normalizePath(target);
+            // If a writer is currently open for the same path, flush it so the
+            // reader sees up-to-date content.
+            if (auxiliaryWriters != null) {
+                Writer w = auxiliaryWriters.get(key);
+                if (w != null) {
+                    w.flush();
+                }
+            }
+            reader = new BufferedReader(new FileReader(key));
+        }
+        if (auxiliaryReaders == null) {
+            auxiliaryReaders = new ArrayList<Closeable>();
+        }
+        auxiliaryReaders.add(reader);
+        return reader;
+    }
+
+    /**
+     * Removes a reader from the cleanup list (e.g., when iteration completes normally
+     * and the reader has already been closed).
+     *
+     * @since 2.3.35
+     */
+    void unregisterReader(Closeable reader) {
+        if (auxiliaryReaders != null) {
+            auxiliaryReaders.remove(reader);
+        }
+    }
+
+    /**
+     * Normalizes a path string to its canonical form for use as a map key.
+     * Resolves "." and ".." but does not resolve symlinks.
+     */
+    private static String normalizePath(String path) {
+        return Paths.get(path).toAbsolutePath().normalize().toString();
+    }
+
+    /**
+     * Closes all auxiliary writers and readers. Called at the end of {@link #process()}.
+     * Errors during close are logged but not propagated, to ensure all handles get closed.
+     */
+    private void closeAuxiliaryStreams() {
+        if (auxiliaryWriters != null) {
+            for (Map.Entry<String, Writer> entry : auxiliaryWriters.entrySet()) {
+                try {
+                    entry.getValue().flush();
+                    entry.getValue().close();
+                } catch (IOException e) {
+                    LOG.warn("Failed to close auxiliary writer for: " + entry.getKey(), e);
+                }
+            }
+            auxiliaryWriters = null;
+        }
+        if (auxiliaryReaders != null) {
+            for (Closeable reader : auxiliaryReaders) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOG.warn("Failed to close auxiliary reader", e);
+                }
+            }
+            auxiliaryReaders = null;
+        }
     }
 
     @Override

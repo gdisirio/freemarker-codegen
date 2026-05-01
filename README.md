@@ -180,6 +180,161 @@ This makes it natural to start the content on the line after `"""` without addin
 
 ---
 
+## Multi-Stream I/O
+
+Code-first mode supports writing to multiple output targets and reading from files or stdin in a single template. This enables generating multiple files (e.g., `.h` and `.c` together), emitting diagnostics to stderr, and reading data fixtures inline.
+
+### Writing: `emit ... to <target>`
+
+The `to <target>` clause routes the output to a specific destination:
+
+```
+emit "main output"                          // implicit "to default" (legacy)
+emit "diagnostic\n" to stderr               // standard error
+emit "tabular line\n" to stdout             // standard out
+emit "header content\n" to "build/out.h"    // file path
+emit "..." to header_path                   // string variable holding a path
+```
+
+**Reserved target names:**
+
+| Target | Destination |
+|---|---|
+| `default` | The main template output (the `Writer` passed to `process()`) |
+| `stdout` | `System.out` |
+| `stderr` | `System.err` |
+
+Any other expression evaluates to a string treated as a **file path**.
+
+### Output file semantics
+
+- **Lazy open**: the file is opened on the first `emit ... to <path>` for that path
+- **Truncate mode**: the file is overwritten — existing content is discarded
+- **Cached handle**: subsequent `emit`s to the same path reuse the open handle, preserving order
+- **Path normalization**: paths are normalized via `toAbsolutePath().normalize()`, so `"out.txt"`, `"./out.txt"`, and `"sub/../out.txt"` all map to the same handle
+- **Auto parent dirs**: missing parent directories are created automatically
+- **Auto close**: all open handles are flushed and closed when template processing ends
+
+### Multi-file generation example
+
+```
+header = "include/${name}.h"
+source = "src/${name}.c"
+
+emit "#ifndef ${name?upper_case}_H\n" to header
+emit "#define ${name?upper_case}_H\n" to header
+emit "#include \"${name}.h\"\n" to source
+
+list functions as f
+  emit f.prototype + ";\n" to header        // declaration in .h
+  emit f.body to source                      // implementation in .c
+endlist
+
+emit "#endif\n" to header
+```
+
+The `.h` and `.c` files are generated in a single pass, with related code emitted adjacent in the template — making cross-file consistency easy to maintain.
+
+### Reading: `read from` and `readln from`
+
+Two read primitives are available as expressions:
+
+```
+text = read from "data.txt"                 // entire file as a string
+text = read from stdin                      // entire stdin as a string
+
+list (readln from "big.csv") as line        // lazy line-by-line iteration
+  emit line + "\n"
+endlist
+```
+
+| Form | Returns | Use case |
+|---|---|---|
+| `read from <target>` | String (eager) | Whole file content; small files, fixtures, snippets |
+| `readln from <target>` | Collection (lazy) | Line-by-line iteration; any file size |
+
+Reserved target name: `stdin`. Anything else is treated as a file path.
+
+### `readln` returns a lazy collection
+
+The result of `readln from <target>` is a `TemplateCollectionModel` — iteration-only, single-pass, bounded memory. Each iteration reads exactly one line; the file is never fully materialized. Line terminators (`\n`, `\r\n`, `\r`) are stripped from yielded values.
+
+**Streaming-safe built-ins** that work on `readln` results without materializing:
+
+```
+readln from "data.txt"?first                   // reads one line, returns it
+readln from "data.txt"?join(", ")              // reads to end, returns joined string
+readln from "data.txt"?filter(l -> ...)        // lazy filtered collection
+readln from "data.txt"?map(l -> l?upper_case)  // lazy transformed collection
+readln from "data.txt"?take_while(l -> ...)    // lazy prefix
+readln from "data.txt"?drop_while(l -> ...)    // lazy suffix
+```
+
+Chained pipelines stay lazy:
+
+```
+list (readln from "data.csv")?drop_while(l -> l?starts_with("#"))?filter(l -> l != "") as line
+  emit transform(line) + "\n"
+endlist
+```
+
+This iterates the source once, top to bottom, without ever loading the whole file.
+
+**Operations not supported** on a lazy collection (would require materialization):
+
+- `?size`, `[i]` indexing — error
+- `?sort`, `?reverse` — error
+
+If you need these, materialize explicitly with `?sequence`:
+
+```
+all = (readln from "data.txt")?sequence       // reads ENTIRE file into memory
+emit all?size?c                                // works
+emit all?sort?join("\n")                       // works
+```
+
+`?sequence` is the explicit boundary between streaming and in-memory operations. It makes the cost visible at the call site.
+
+### Multiple `readln` on the same file
+
+Each `readln from <target>` call opens a fresh reader. Two calls on the same path are independent:
+
+```
+list (readln from "data.csv") as line     // first pass
+  // validate
+endlist
+list (readln from "data.csv") as line     // second pass — file reopened
+  // emit
+endlist
+```
+
+Unlike output handles (which are cached for write coalescing), input handles are not cached — repeated reads of the same file are always fresh.
+
+### Reading a freshly-written file
+
+If you write to a file with `emit ... to <path>` and read it back with `read from <path>` or `readln from <path>` later in the same template, the runtime flushes the open writer before opening the reader. The newly-written content is visible.
+
+### Stdin termination
+
+Reading from `stdin` ends naturally at EOF — Ctrl-D in a terminal, or end-of-pipe when piped from another command:
+
+```
+list readln from stdin as line
+  emit line + "\n"
+endlist
+// loop ends when stdin closes
+```
+
+Stdin is single-pass and not seekable. A second `readln from stdin` after the first one exhausts it yields zero elements.
+
+### Configuration knobs
+
+- File paths are resolved relative to the current working directory when the template runs
+- All output flows through the same `output_eol` and `\e` resolution as the main `emit` (see below)
+- Writes use UTF-8 encoding by default
+
+---
+
 ## End-of-Line Handling
 
 Code-first mode provides consistent, configurable end-of-line handling to prevent the template file's own line endings from leaking into generated output.
@@ -971,3 +1126,6 @@ emit "}\n"
 | (not available) | `&`, `\|`, `^`, `~`, `<<`, `>>` (bitwise) |
 | (not available) | `&=`, `\|=`, `^=`, `<<=`, `>>=` (bitwise assign) |
 | (not available) | `?tab_to(col)`, `?tab_to(col, fill)` (pad to column) |
+| (not available) | `emit expr to <target>` (multi-target output) |
+| (not available) | `read from <target>` (eager file read) |
+| (not available) | `readln from <target>` (lazy line iteration) |
