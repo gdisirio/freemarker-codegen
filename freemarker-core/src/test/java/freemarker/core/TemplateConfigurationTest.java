@@ -171,6 +171,7 @@ public class TemplateConfigurationTest {
         SETTING_ASSIGNMENTS.put("numberFormat", "0.0000");
         SETTING_ASSIGNMENTS.put("objectWrapper", new SimpleObjectWrapper(ICI));
         SETTING_ASSIGNMENTS.put("outputEncoding", "utf-16");
+        SETTING_ASSIGNMENTS.put("outputEol", "\r\n");
         SETTING_ASSIGNMENTS.put("showErrorTips", false);
         SETTING_ASSIGNMENTS.put("templateExceptionHandler", TemplateExceptionHandler.IGNORE_HANDLER);
         SETTING_ASSIGNMENTS.put("attemptExceptionReporter", AttemptExceptionReporter.LOG_WARN_REPORTER);

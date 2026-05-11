@@ -225,6 +225,9 @@ public final class TemplateConfiguration extends Configurable implements ParserC
         if (tc.isOutputEncodingSet()) {
             setOutputEncoding(tc.getOutputEncoding());
         }
+        if (tc.isOutputEolSet()) {
+            setOutputEol(tc.getOutputEol());
+        }
         if (tc.isOutputFormatSet()) {
             setOutputFormat(tc.getOutputFormat());
         }
@@ -369,6 +372,9 @@ public final class TemplateConfiguration extends Configurable implements ParserC
         }
         if (isOutputEncodingSet() && !template.isOutputEncodingSet()) {
             template.setOutputEncoding(getOutputEncoding());
+        }
+        if (isOutputEolSet() && !template.isOutputEolSet()) {
+            template.setOutputEol(getOutputEol());
         }
         if (isShowErrorTipsSet() && !template.isShowErrorTipsSet()) {
             template.setShowErrorTips(getShowErrorTips());
@@ -730,6 +736,7 @@ public final class TemplateConfiguration extends Configurable implements ParserC
                 || isNumberFormatSet()
                 || isObjectWrapperSet()
                 || isOutputEncodingSet()
+                || isOutputEolSet()
                 || isShowErrorTipsSet()
                 || isSQLDateAndTimeTimeZoneSet()
                 || isTemplateExceptionHandlerSet()

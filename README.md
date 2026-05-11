@@ -369,7 +369,7 @@ The default is `"\n"`. To change it:
 **Via configuration (Java):**
 
 ```java
-cfg.setOutputEOL("\r\n");  // Windows line endings
+cfg.setOutputEol("\r\n");  // Windows line endings
 ```
 
 **Via `setting` directive:**

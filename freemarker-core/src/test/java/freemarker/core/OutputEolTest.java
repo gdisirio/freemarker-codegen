@@ -30,13 +30,13 @@ import org.junit.Test;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 
-public class OutputEOLTest {
+public class OutputEolTest {
 
-    private String processCodeFirst(String templateContent, String outputEOL) throws Exception {
+    private String processCodeFirst(String templateContent, String outputEol) throws Exception {
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
         cfg.setCodeFirstMode(true);
-        if (outputEOL != null) {
-            cfg.setOutputEOL(outputEOL);
+        if (outputEol != null) {
+            cfg.setOutputEol(outputEol);
         }
         Template t = new Template("test.ftl", new StringReader(templateContent), cfg);
         StringWriter sw = new StringWriter();
@@ -44,10 +44,10 @@ public class OutputEOLTest {
         return sw.toString();
     }
 
-    private String processClassic(String templateContent, String outputEOL) throws Exception {
+    private String processClassic(String templateContent, String outputEol) throws Exception {
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
-        if (outputEOL != null) {
-            cfg.setOutputEOL(outputEOL);
+        if (outputEol != null) {
+            cfg.setOutputEol(outputEol);
         }
         Template t = new Template("test.ftl", new StringReader(templateContent), cfg);
         StringWriter sw = new StringWriter();
@@ -96,7 +96,7 @@ public class OutputEOLTest {
     }
 
     @Test
-    public void testTemplateSettingOutputEOL() throws Exception {
+    public void testTemplateSettingOutputEol() throws Exception {
         assertEquals("line1\r\nline2\r\n",
                 processCodeFirst("setting output_eol = \"\\r\\n\"\nemit \"line1\\eline2\\e\"\n", null));
     }
@@ -127,8 +127,8 @@ public class OutputEOLTest {
     // ---- Configuration defaults ----
 
     @Test
-    public void testDefaultOutputEOL() throws Exception {
+    public void testDefaultOutputEol() throws Exception {
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
-        assertEquals("\n", cfg.getOutputEOL());
+        assertEquals("\n", cfg.getOutputEol());
     }
 }

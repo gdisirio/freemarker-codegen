@@ -54,7 +54,7 @@ jobs:
           java-version: 17
           distribution: oracle
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v3
+        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
       - name: Run Build
         id: build_step
         run: './gradlew "-Pfreemarker.signMethod=none" "-Pfreemarker.allowUnsignedReleaseBuild=true" --continue clean build'
@@ -84,7 +84,10 @@ jobs:
         # </html>
       - name: Test GraalVM native support (build and run)
         id: native_test
-        run: './gradlew :freemarker-test-graalvm-native:nativeCompile;./freemarker-test-graalvm-native/build/native/nativeCompile/freemarker-test-graalvm-native'
+        if: runner.os != 'Windows'
+        run: |
+          ./gradlew :freemarker-test-graalvm-native:nativeCompile
+          ./freemarker-test-graalvm-native/build/native/nativeCompile/freemarker-test-graalvm-native
       - name: Upload Failed Report
         uses: actions/upload-artifact@v4
         if: failure() && steps.build_step.outcome == 'failure'

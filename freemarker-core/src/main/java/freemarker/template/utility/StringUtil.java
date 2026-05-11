@@ -50,11 +50,11 @@ public class StringUtil {
      * Resolves {@link #OUTPUT_EOL_PLACEHOLDER} characters in a string, replacing them
      * with the specified EOL string.
      */
-    public static String resolveOutputEOL(String s, String outputEOL) {
+    public static String resolveOutputEol(String s, String outputEol) {
         if (s.indexOf(OUTPUT_EOL_PLACEHOLDER) == -1) {
             return s;
         }
-        return s.replace(String.valueOf(OUTPUT_EOL_PLACEHOLDER), outputEOL);
+        return s.replace(String.valueOf(OUTPUT_EOL_PLACEHOLDER), outputEol);
     }
 
     /**

@@ -213,7 +213,7 @@ public class Configurable {
     /** Legacy, snake case ({@code like_this}) variation of the setting name. @since 2.3.35 */
     public static final String OUTPUT_EOL_KEY_SNAKE_CASE = "output_eol";
     /** Modern, camel case ({@code likeThis}) variation of the setting name. @since 2.3.35 */
-    public static final String OUTPUT_EOL_KEY_CAMEL_CASE = "outputEOL";
+    public static final String OUTPUT_EOL_KEY_CAMEL_CASE = "outputEol";
     /** Alias to the {@code ..._SNAKE_CASE} variation due to backward compatibility constraints. */
     public static final String OUTPUT_EOL_KEY = OUTPUT_EOL_KEY_SNAKE_CASE;
     
@@ -369,8 +369,8 @@ public class Configurable {
         NEW_BUILTIN_CLASS_RESOLVER_KEY_CAMEL_CASE,
         NUMBER_FORMAT_KEY_CAMEL_CASE,
         OBJECT_WRAPPER_KEY_CAMEL_CASE,
-        OUTPUT_EOL_KEY_CAMEL_CASE,
         OUTPUT_ENCODING_KEY_CAMEL_CASE,
+        OUTPUT_EOL_KEY_CAMEL_CASE,
         SHOW_ERROR_TIPS_KEY_CAMEL_CASE,
         SQL_DATE_AND_TIME_TIME_ZONE_KEY_CAMEL_CASE,
         STRICT_BEAN_MODELS_KEY_CAMEL_CASE,
@@ -403,8 +403,8 @@ public class Configurable {
     private ObjectWrapper objectWrapper;
     private String outputEncoding;
     private boolean outputEncodingSet;
-    private String outputEOL;
-    private boolean outputEOLSet;
+    private String outputEol;
+    private boolean outputEolSet;
     private String urlEscapingCharset;
     private boolean urlEscapingCharsetSet;
     private Boolean autoFlush;
@@ -499,7 +499,7 @@ public class Configurable {
         logTemplateExceptions = _TemplateAPI.getDefaultLogTemplateExceptions(incompatibleImprovements);
         properties.setProperty(LOG_TEMPLATE_EXCEPTIONS_KEY, logTemplateExceptions.toString());
 
-        // outputEOL has a non-null default ("\n") which is also exposed via getSetting()
+        // outputEol has a non-null default ("\n") which is also exposed via getSetting()
         properties.setProperty(OUTPUT_EOL_KEY, "\n");
         
         // outputEncoding and urlEscapingCharset defaults to null,
@@ -1578,24 +1578,24 @@ public class Configurable {
      *
      * @since 2.3.35
      */
-    public void setOutputEOL(String outputEOL) {
-        if (outputEOL == null) {
-            throw new IllegalArgumentException("outputEOL cannot be null");
+    public void setOutputEol(String outputEol) {
+        if (outputEol == null) {
+            throw new IllegalArgumentException("outputEol cannot be null");
         }
-        this.outputEOL = outputEOL;
-        properties.setProperty(OUTPUT_EOL_KEY, outputEOL);
-        outputEOLSet = true;
+        this.outputEol = outputEol;
+        properties.setProperty(OUTPUT_EOL_KEY, outputEol);
+        outputEolSet = true;
     }
 
     /**
-     * Getter pair of {@link #setOutputEOL(String)}.
+     * Getter pair of {@link #setOutputEol(String)}.
      *
      * @since 2.3.35
      */
-    public String getOutputEOL() {
-        return outputEOLSet
-                ? outputEOL
-                : (parent != null ? parent.getOutputEOL() : "\n");
+    public String getOutputEol() {
+        return outputEolSet
+                ? outputEol
+                : (parent != null ? parent.getOutputEol() : "\n");
     }
 
     /**
@@ -1603,8 +1603,8 @@ public class Configurable {
      *
      * @since 2.3.35
      */
-    public boolean isOutputEOLSet() {
-        return outputEOLSet;
+    public boolean isOutputEolSet() {
+        return outputEolSet;
     }
     
     /**
@@ -2857,7 +2857,7 @@ public class Configurable {
                                             value, CFormat.class, false, _SettingEvaluationEnvironment.getCurrent()));
                 }
             } else if (OUTPUT_EOL_KEY_SNAKE_CASE.equals(name) || OUTPUT_EOL_KEY_CAMEL_CASE.equals(name)) {
-                setOutputEOL(value);
+                setOutputEol(value);
             } else if (OUTPUT_ENCODING_KEY_SNAKE_CASE.equals(name) || OUTPUT_ENCODING_KEY_CAMEL_CASE.equals(name)) {
                 setOutputEncoding(value);
             } else if (URL_ESCAPING_CHARSET_KEY_SNAKE_CASE.equals(name)

@@ -76,8 +76,8 @@ final class EmitToDirective extends TemplateElement {
         Writer writer = env.getWriterForTarget(targetStr);
 
         // Resolve EOL placeholder for emit-to (consistent with ${...} in main output)
-        String outputEOL = env.getOutputEOL();
-        value = StringUtil.resolveOutputEOL(value, outputEOL);
+        String outputEol = env.getOutputEol();
+        value = StringUtil.resolveOutputEol(value, outputEol);
 
         writer.write(value);
         return null;
