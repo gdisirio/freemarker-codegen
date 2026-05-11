@@ -209,6 +209,13 @@ public class Configurable {
     public static final String OUTPUT_ENCODING_KEY_CAMEL_CASE = "outputEncoding";
     /** Alias to the {@code ..._SNAKE_CASE} variation due to backward compatibility constraints. */
     public static final String OUTPUT_ENCODING_KEY = OUTPUT_ENCODING_KEY_SNAKE_CASE;
+
+    /** Legacy, snake case ({@code like_this}) variation of the setting name. @since 2.3.35 */
+    public static final String OUTPUT_EOL_KEY_SNAKE_CASE = "output_eol";
+    /** Modern, camel case ({@code likeThis}) variation of the setting name. @since 2.3.35 */
+    public static final String OUTPUT_EOL_KEY_CAMEL_CASE = "outputEOL";
+    /** Alias to the {@code ..._SNAKE_CASE} variation due to backward compatibility constraints. */
+    public static final String OUTPUT_EOL_KEY = OUTPUT_EOL_KEY_SNAKE_CASE;
     
     /** Legacy, snake case ({@code like_this}) variation of the setting name. @since 2.3.23 */
     public static final String URL_ESCAPING_CHARSET_KEY_SNAKE_CASE = "url_escaping_charset";
@@ -328,6 +335,7 @@ public class Configurable {
         NUMBER_FORMAT_KEY_SNAKE_CASE,
         OBJECT_WRAPPER_KEY_SNAKE_CASE,
         OUTPUT_ENCODING_KEY_SNAKE_CASE,
+        OUTPUT_EOL_KEY_SNAKE_CASE,
         SHOW_ERROR_TIPS_KEY_SNAKE_CASE,
         SQL_DATE_AND_TIME_TIME_ZONE_KEY_SNAKE_CASE,
         STRICT_BEAN_MODELS_KEY,
@@ -361,6 +369,7 @@ public class Configurable {
         NEW_BUILTIN_CLASS_RESOLVER_KEY_CAMEL_CASE,
         NUMBER_FORMAT_KEY_CAMEL_CASE,
         OBJECT_WRAPPER_KEY_CAMEL_CASE,
+        OUTPUT_EOL_KEY_CAMEL_CASE,
         OUTPUT_ENCODING_KEY_CAMEL_CASE,
         SHOW_ERROR_TIPS_KEY_CAMEL_CASE,
         SQL_DATE_AND_TIME_TIME_ZONE_KEY_CAMEL_CASE,
@@ -394,6 +403,8 @@ public class Configurable {
     private ObjectWrapper objectWrapper;
     private String outputEncoding;
     private boolean outputEncodingSet;
+    private String outputEOL;
+    private boolean outputEOLSet;
     private String urlEscapingCharset;
     private boolean urlEscapingCharsetSet;
     private Boolean autoFlush;
@@ -487,6 +498,9 @@ public class Configurable {
         
         logTemplateExceptions = _TemplateAPI.getDefaultLogTemplateExceptions(incompatibleImprovements);
         properties.setProperty(LOG_TEMPLATE_EXCEPTIONS_KEY, logTemplateExceptions.toString());
+
+        // outputEOL has a non-null default ("\n") which is also exposed via getSetting()
+        properties.setProperty(OUTPUT_EOL_KEY, "\n");
         
         // outputEncoding and urlEscapingCharset defaults to null,
         // which means "not specified"
@@ -1554,6 +1568,43 @@ public class Configurable {
      */
     public boolean isOutputEncodingSet() {
         return outputEncodingSet;
+    }
+
+    /**
+     * Sets the end-of-line string used for the {@code \e} escape sequence and
+     * for code-first text block normalization.
+     *
+     * <p>Defaults to {@code "\n"}.
+     *
+     * @since 2.3.35
+     */
+    public void setOutputEOL(String outputEOL) {
+        if (outputEOL == null) {
+            throw new IllegalArgumentException("outputEOL cannot be null");
+        }
+        this.outputEOL = outputEOL;
+        properties.setProperty(OUTPUT_EOL_KEY, outputEOL);
+        outputEOLSet = true;
+    }
+
+    /**
+     * Getter pair of {@link #setOutputEOL(String)}.
+     *
+     * @since 2.3.35
+     */
+    public String getOutputEOL() {
+        return outputEOLSet
+                ? outputEOL
+                : (parent != null ? parent.getOutputEOL() : "\n");
+    }
+
+    /**
+     * Tells if this setting is set directly in this object or inherited from the parent.
+     *
+     * @since 2.3.35
+     */
+    public boolean isOutputEOLSet() {
+        return outputEOLSet;
     }
     
     /**
@@ -2805,6 +2856,8 @@ public class Configurable {
                                     : (CFormat) _ObjectBuilderSettingEvaluator.eval(
                                             value, CFormat.class, false, _SettingEvaluationEnvironment.getCurrent()));
                 }
+            } else if (OUTPUT_EOL_KEY_SNAKE_CASE.equals(name) || OUTPUT_EOL_KEY_CAMEL_CASE.equals(name)) {
+                setOutputEOL(value);
             } else if (OUTPUT_ENCODING_KEY_SNAKE_CASE.equals(name) || OUTPUT_ENCODING_KEY_CAMEL_CASE.equals(name)) {
                 setOutputEncoding(value);
             } else if (URL_ESCAPING_CHARSET_KEY_SNAKE_CASE.equals(name)

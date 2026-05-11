@@ -89,7 +89,7 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
         if (dynamicValue == null) {
             if (env != null && value.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) != -1) {
                 return new SimpleScalar(StringUtil.resolveOutputEOL(value,
-                        env.getConfiguration().getOutputEOL()));
+                        env.getOutputEOL()));
             }
             return new SimpleScalar(value);
         } else {
@@ -101,7 +101,7 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
             StringBuilder plainTextResult = null;
             TemplateMarkupOutputModel<?> markupResult = null;
             
-            String outputEOL = env != null ? env.getConfiguration().getOutputEOL() : "\n";
+            String outputEOL = env != null ? env.getOutputEOL() : "\n";
             for (Object part : dynamicValue) {
                 Object calcedPart =
                         part instanceof String ? StringUtil.resolveOutputEOL((String) part, outputEOL)

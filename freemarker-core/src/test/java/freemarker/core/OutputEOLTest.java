@@ -95,6 +95,12 @@ public class OutputEOLTest {
                 processCodeFirst("x = \"world\"\nemit \"hello\\e${x}\\e\"\n", null));
     }
 
+    @Test
+    public void testTemplateSettingOutputEOL() throws Exception {
+        assertEquals("line1\r\nline2\r\n",
+                processCodeFirst("setting output_eol = \"\\r\\n\"\nemit \"line1\\eline2\\e\"\n", null));
+    }
+
     // ---- Text block EOL normalization tests ----
 
     @Test
