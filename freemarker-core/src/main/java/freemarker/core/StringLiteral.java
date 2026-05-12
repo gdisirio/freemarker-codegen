@@ -31,14 +31,32 @@ import freemarker.template.TemplateScalarModel;
 import freemarker.template.utility.StringUtil;
 
 final class StringLiteral extends Expression implements TemplateScalarModel {
-    
+
     private final String value;
-    
+
     /** {@link List} of {@link String}-s and {@link Interpolation}-s. */
     private List<Object> dynamicValue;
-    
+
+    /**
+     * When true, raw newline characters in this literal's static text are normalized
+     * to {@code output_eol} at evaluation time. Used for text blocks ({@code emit """..."""})
+     * so the template source's line endings don't leak into the output.
+     * Keeping newlines in the parsed string (instead of pre-replacing them with the
+     * {@link freemarker.template.utility.StringUtil#OUTPUT_EOL_PLACEHOLDER}) preserves
+     * accurate line/column tracking for embedded {@code ${...}} parse errors.
+     */
+    private boolean normalizeNewlinesToOutputEol;
+
     StringLiteral(String value) {
         this.value = value;
+    }
+
+    /**
+     * Marks this literal as a text block — raw newlines in its static text will be
+     * normalized to {@code output_eol} at evaluation time.
+     */
+    void setNormalizeNewlinesToOutputEol(boolean normalize) {
+        this.normalizeNewlinesToOutputEol = normalize;
     }
     
     /**
@@ -87,9 +105,17 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
     @Override
     TemplateModel _eval(Environment env) throws TemplateException {
         if (dynamicValue == null) {
-            if (env != null && value.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) != -1) {
-                return new SimpleScalar(StringUtil.resolveOutputEol(value,
-                        env.getOutputEol()));
+            if (env != null) {
+                String outputEol = env.getOutputEol();
+                String result = value;
+                if (normalizeNewlinesToOutputEol) {
+                    result = stripLeadingNewline(result);
+                    result = normalizeRawNewlines(result, outputEol);
+                }
+                if (result.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) != -1) {
+                    result = StringUtil.resolveOutputEol(result, outputEol);
+                }
+                return new SimpleScalar(result);
             }
             return new SimpleScalar(value);
         } else {
@@ -102,10 +128,22 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
             TemplateMarkupOutputModel<?> markupResult = null;
             
             String outputEol = env != null ? env.getOutputEol() : "\n";
+            boolean isFirstPart = true;
             for (Object part : dynamicValue) {
-                Object calcedPart =
-                        part instanceof String ? StringUtil.resolveOutputEol((String) part, outputEol)
-                        : ((Interpolation) part).calculateInterpolatedStringOrMarkup(env);
+                Object calcedPart;
+                if (part instanceof String) {
+                    String s = (String) part;
+                    if (normalizeNewlinesToOutputEol) {
+                        if (isFirstPart) {
+                            s = stripLeadingNewline(s);
+                        }
+                        s = normalizeRawNewlines(s, outputEol);
+                    }
+                    calcedPart = StringUtil.resolveOutputEol(s, outputEol);
+                } else {
+                    calcedPart = ((Interpolation) part).calculateInterpolatedStringOrMarkup(env);
+                }
+                isFirstPart = false;
                 if (markupResult != null) {
                     TemplateMarkupOutputModel<?> partMO = calcedPart instanceof String
                             ? markupResult.getOutputFormat().fromPlainTextByEscaping((String) calcedPart)
@@ -177,7 +215,56 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
     
     @Override
     boolean isLiteral() {
-        return dynamicValue == null && value.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) == -1;
+        return dynamicValue == null
+                && !normalizeNewlinesToOutputEol
+                && value.indexOf(StringUtil.OUTPUT_EOL_PLACEHOLDER) == -1;
+    }
+
+    /**
+     * Strips optional leading whitespace + a single EOL from the start of {@code s},
+     * implementing the text-block "leading newline" rule: {@code emit """} followed
+     * by only whitespace + newline strips that first line.
+     */
+    private static String stripLeadingNewline(String s) {
+        int i = 0;
+        int len = s.length();
+        while (i < len && (s.charAt(i) == ' ' || s.charAt(i) == '\t')) {
+            i++;
+        }
+        if (i < len && s.charAt(i) == '\n') {
+            return s.substring(i + 1);
+        }
+        if (i < len && s.charAt(i) == '\r') {
+            if (i + 1 < len && s.charAt(i + 1) == '\n') {
+                return s.substring(i + 2);
+            }
+            return s.substring(i + 1);
+        }
+        return s;
+    }
+
+    /**
+     * Replaces raw {@code \r\n}, {@code \r}, and {@code \n} sequences with the
+     * given {@code outputEol} string.
+     */
+    private static String normalizeRawNewlines(String s, String outputEol) {
+        if (s.indexOf('\n') == -1 && s.indexOf('\r') == -1) {
+            return s;
+        }
+        StringBuilder sb = new StringBuilder(s.length());
+        int len = s.length();
+        for (int i = 0; i < len; i++) {
+            char c = s.charAt(i);
+            if (c == '\r') {
+                sb.append(outputEol);
+                if (i + 1 < len && s.charAt(i + 1) == '\n') i++;
+            } else if (c == '\n') {
+                sb.append(outputEol);
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     @Override

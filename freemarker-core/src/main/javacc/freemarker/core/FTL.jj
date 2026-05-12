@@ -5825,30 +5825,13 @@ TemplateElement CodeFirstEmit() :
             String raw = textBlock.image;
             // Strip the trailing """ (the closing delimiter)
             String content = raw.substring(0, raw.length() - 3);
-            // Apply leading newline stripping rule:
-            // If content starts with optional whitespace + EOL, strip that first line
-            if (content.length() > 0) {
-                int i = 0;
-                while (i < content.length() && (content.charAt(i) == ' ' || content.charAt(i) == '\t')) {
-                    i++;
-                }
-                if (i < content.length() && content.charAt(i) == '\n') {
-                    content = content.substring(i + 1);
-                } else if (i < content.length() && content.charAt(i) == '\r') {
-                    if (i + 1 < content.length() && content.charAt(i + 1) == '\n') {
-                        content = content.substring(i + 2);
-                    } else {
-                        content = content.substring(i + 1);
-                    }
-                }
-            }
-            // Normalize line endings in text blocks to the output EOL placeholder.
-            // This ensures template file line endings don't leak into the output.
-            content = content.replace("\r\n", String.valueOf(freemarker.template.utility.StringUtil.OUTPUT_EOL_PLACEHOLDER));
-            content = content.replace("\r", String.valueOf(freemarker.template.utility.StringUtil.OUTPUT_EOL_PLACEHOLDER));
-            content = content.replace("\n", String.valueOf(freemarker.template.utility.StringUtil.OUTPUT_EOL_PLACEHOLDER));
-            // Create a StringLiteral from the content and process interpolations
+            // Create a StringLiteral from the content. Newlines and leading
+            // whitespace are KEPT intact so the embedded parser's line/column
+            // tracking remains accurate for any ${...} parse errors. The
+            // StringLiteral takes care of leading-newline stripping and raw-newline
+            // normalization at evaluation time (via setNormalizeNewlinesToOutputEol).
             StringLiteral sl = new StringLiteral(content);
+            sl.setNormalizeNewlinesToOutputEol(true);
             sl.setLocation(template, textBlock, textBlock);
             sl.parseValue(this, outputFormat);
             exp = sl;
