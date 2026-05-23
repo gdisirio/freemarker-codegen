@@ -76,5 +76,8 @@ freemarker-test-graalvm-native/README.md
 # -------------------------------------------
 
 README.md
+README-freemarker.md
+AGENTS.md
+SECURITY.md
 gradlew.bat
 .buildinfo
