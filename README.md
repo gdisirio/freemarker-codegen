@@ -643,6 +643,36 @@ generatePrototype(
 )
 ```
 
+### Method-style function calls (`?`)
+
+A function can be called with `?` syntax, where the value on the left becomes the function's first argument:
+
+```
+function shout(s)
+  return s?upper_case
+endfunction
+
+emit "hi"?shout()        // same as shout("hi") → "HI"
+```
+
+`x?name(args)` is exactly equivalent to `name(x, args)` — it's pure syntactic sugar. The benefit is readability when chaining transformations, which read left-to-right in the order they apply:
+
+```
+emit text?trimmed()?shout()?indent("  ")
+// same as: indent(shout(trimmed(text)), "  ")
+```
+
+Name resolution follows the usual rules — bare names resolve in the current namespace, dotted names in an imported one:
+
+```
+import "lib/utils.ftlc" as u
+emit name?u.format()     // same as u.format(name)
+```
+
+**Built-ins always take precedence.** `x?upper_case` is the built-in, even if you define a function named `upper_case`. The `?name(...)` form only resolves to a function when `name` is not a built-in.
+
+This is available **only in code-first mode**. In classic `.ftl`, a function body can produce text whose presence depends on whitespace-stripping settings, so calling a function in an expression context could have surprising output side effects. Code-first mode produces output only via `emit`, so a function call in an expression is guaranteed to have no hidden output — which is what makes this safe here.
+
 ### nested
 
 Inside a macro, `nested` outputs the caller-provided body content:
@@ -1138,3 +1168,4 @@ emit "}\n"
 | (not available) | `emit expr to <target>` (multi-target output) |
 | (not available) | `read from <target>` (eager file read) |
 | (not available) | `readln from <target>` (lazy line iteration) |
+| `@function x` (no equivalent) | `x?func(args)` (method-style call → `func(x, args)`) |

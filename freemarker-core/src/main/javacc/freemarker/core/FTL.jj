@@ -2550,10 +2550,23 @@ Expression BuiltIn(Expression lhoExp) :
     Token openParen;
     Token closeParen;
     MethodCall methodCall;
+    Expression ufcsResult;
 }
 {
     <BUILT_IN>
     t = <ID>
+    (
+        // Code-first UFCS (uniform function call syntax): "x?name(args)" calls the
+        // function "name(x, args)" when "name" isn't a built-in. Enabled only in
+        // code-first mode, where output is produced only via "emit", so calling a
+        // function in expression context can't have whitespace-dependent text
+        // side effects (which is why this isn't offered in classic mode).
+        LOOKAHEAD({ codeFirstMode && !BuiltIn.BUILT_INS_BY_NAME.containsKey(getToken(0).image) })
+        ufcsResult = CodeFirstUfcsTail(lhoExp, t)
+        {
+            return ufcsResult;
+        }
+        |
     {
         token_source.checkNamingConvention(t);
         result = BuiltIn.newBuiltIn(incompatibleImprovements, lhoExp, t, token_source);
@@ -2661,7 +2674,46 @@ Expression BuiltIn(Expression lhoExp) :
         // Should have already return-ed
         throw new AssertionError("Unhandled " + SpecialBuiltIn.class.getName() + " subclass: " + result.getClass());
     }
+    )
+}
 
+/**
+ * Tail of a code-first UFCS call: the part after "?name", i.e. an optional
+ * ".name2" (for an imported namespace) and then "(args)". Builds a method call
+ * with the receiver prepended as the first argument: "x?foo(a, b)" => "foo(x, a, b)",
+ * "x?ns.foo(a)" => "ns.foo(x, a)".
+ */
+Expression CodeFirstUfcsTail(Expression receiver, Token nameTk) :
+{
+    Token t2 = null;
+    Token closeParen;
+    ArrayList args;
+    Expression callee;
+}
+{
+    {
+        callee = new Identifier(nameTk.image);
+        callee.setLocation(template, nameTk, nameTk);
+    }
+    [
+        <DOT>
+        t2 = <ID>
+        {
+            Dot dot = new Dot(callee, t2.image);
+            dot.setLocation(template, nameTk, t2);
+            callee = dot;
+        }
+    ]
+    <OPEN_PAREN>
+    args = PositionalArgs()
+    closeParen = <CLOSE_PAREN>
+    {
+        // Prepend the receiver as the implicit first argument.
+        args.add(0, receiver);
+        MethodCall result = new MethodCall(callee, args);
+        result.setLocation(template, receiver, closeParen);
+        return result;
+    }
 }
 
 // Only supported as the argument of certain built-ins, so it's not called inside Expression.
