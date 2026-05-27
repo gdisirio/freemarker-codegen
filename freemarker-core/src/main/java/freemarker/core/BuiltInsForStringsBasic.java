@@ -496,57 +496,6 @@ class BuiltInsForStringsBasic {
         }
     }
     
-    static class tabToBI extends BuiltInForString {
-
-        private class BIMethod implements TemplateMethodModelEx {
-
-            private final String s;
-
-            private BIMethod(String s) {
-                this.s = s;
-            }
-
-            @Override
-            public Object exec(List args) throws TemplateModelException {
-                int argCnt = args.size();
-                checkMethodArgCount(argCnt, 1, 2);
-
-                int column = getNumberMethodArg(args, 0).intValue();
-                if (column < 0) {
-                    throw new _TemplateModelException(
-                            "?", key, "(...) argument #1 must be non-negative.");
-                }
-
-                char fillChar = ' ';
-                if (argCnt > 1) {
-                    String filling = getStringMethodArg(args, 1);
-                    if (filling.length() != 1) {
-                        throw new _TemplateModelException(
-                                "?", key, "(...) argument #2 must be a single character string.");
-                    }
-                    fillChar = filling.charAt(0);
-                }
-
-                int len = s.length();
-                if (len >= column) {
-                    return new SimpleScalar(s);
-                }
-
-                StringBuilder sb = new StringBuilder(column);
-                sb.append(s);
-                for (int i = len; i < column; i++) {
-                    sb.append(fillChar);
-                }
-                return new SimpleScalar(sb.toString());
-            }
-        }
-
-        @Override
-        TemplateModel calculateResult(String s, Environment env) throws TemplateException {
-            return new BIMethod(s);
-        }
-    }
-
     static class indentBI extends BuiltInForString {
 
         private class BIMethod implements TemplateMethodModelEx {

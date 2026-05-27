@@ -31,7 +31,17 @@ The result is templates that **read like the code they generate**, with a clean 
 
 - **Parser-only change.** All code-first syntax maps to existing FreeMarker AST nodes. There is no runtime difference — the same engine evaluates both modes identically.
 - **Zero impact on existing templates.** Standard `.ftl` files and behavior are completely unchanged. Code-first mode is strictly opt-in.
-- **Full interoperability.** `.ftl` and `.ftlc` files can freely import and include each other. Each file is parsed independently with its own mode.
+- **Full interoperability.** `.ftl` and `.ftlc` files can freely import and include each other. Each file is parsed independently with its own mode. Both modes produce identical AST nodes, so there is no runtime difference:
+
+```
+// In a .ftlc file:
+import "utils.ftl" as u
+```
+
+```ftl
+<#-- In a .ftl file: -->
+<#import "generator.ftlc" as gen>
+```
 
 ---
 
@@ -70,22 +80,6 @@ Or per-template via `TemplateConfiguration`:
 ```java
 TemplateConfiguration tc = new TemplateConfiguration();
 tc.setCodeFirstMode(true);
-```
-
----
-
-## Interoperability
-
-`.ftl` and `.ftlc` files can freely import and include each other. Each file is parsed independently with its own parser mode. Both modes produce identical AST nodes, so there is no runtime difference:
-
-```
-// In a .ftlc file:
-import "utils.ftl" as u
-```
-
-```ftl
-<#-- In a .ftl file: -->
-<#import "generator.ftlc" as gen>
 ```
 
 ---
@@ -177,6 +171,473 @@ This makes it natural to start the content on the line after `"""` without addin
 | `emit expr` | Computed values, variables, function results |
 | `emit "..."` | Short single-line text with interpolation |
 | `emit """..."""` | Multi-line template blocks |
+
+---
+
+## Variables and Assignment
+
+Assignment uses bare `name = value` syntax. Scoping is automatic:
+
+- At template level: assigns to the current namespace (equivalent to `<#assign>`)
+- Inside a macro or function: assigns to local scope (equivalent to `<#local>`)
+
+```
+// Template level — namespace scope
+x = 1
+name = "World"
+items = ["a", "b", "c"]
+
+macro greet(who)
+  // Inside macro — local scope
+  greeting = "Hello, ${who}"
+  emit greeting
+/macro
+```
+
+### Explicit scope keywords
+
+Use `assign`, `local`, and `global` to explicitly control scope. This is especially useful inside macros and functions where bare assignment always goes to local scope:
+
+```
+macro compute()
+  local temp = heavyCalc()     // local to this call
+  assign result = temp * 2     // writes to template namespace
+  global cached = result       // writes to global scope
+endmacro
+```
+
+| Keyword | Scope | Equivalent classic FTL |
+|---|---|---|
+| *(bare)* | Auto: namespace at top level, local in macro/function | — |
+| `assign` | Current namespace | `<#assign>` |
+| `local` | Local (macro/function only) | `<#local>` |
+| `global` | Global | `<#global>` |
+
+### Compound assignment operators
+
+```
+x = 10
+x += 5
+x -= 2
+x *= 3
+x /= 4
+x %= 3
+x++
+x--
+```
+
+These work with all scope keywords: `assign x += 1`, `local count++`, `global total -= n`.
+
+---
+
+## Expressions
+
+Code-first mode supports the full FreeMarker expression language:
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- Logical: `&&`, `||`, `!`
+- String concatenation: `+`
+- Built-ins: `?c`, `?string`, `?size`, `?has_content`, etc.
+- Default values: `name!"default"`
+- Sequence literals: `["a", "b", "c"]`
+- Hash literals: `{"key": "value"}`
+- Method calls: `obj.method(args)`
+- Ranges: `0..10`, `0..<10`
+
+The `>` and `>=` operators work without parentheses (unlike classic mode where they conflict with the tag-closing `>`).
+
+### Hex literals
+
+Hex integer literals are supported in **both** classic and code-first modes:
+
+```
+x = 0xFF        // 255
+y = 0x00FF00    // 65280
+color = 0xDEAD  // 57005
+```
+
+Values that fit in 32 bits produce `Integer`, larger values produce `Long`.
+
+### Bitwise operators (code-first only)
+
+Code-first mode adds bitwise operators, which are not available in classic FreeMarker:
+
+| Operator | Meaning | Example |
+|---|---|---|
+| `&` | Bitwise AND | `0xFF & 0x0F` → 15 |
+| `\|` | Bitwise OR | `0x0F \| 0xF0` → 255 |
+| `^` | Bitwise XOR | `0xFF ^ 0x0F` → 240 |
+| `~` | Bitwise NOT | `~0xFF` → -256 |
+| `<<` | Left shift | `1 << 8` → 256 |
+| `>>` | Right shift | `256 >> 8` → 1 |
+
+`&&` and `||` remain logical operators. The parser distinguishes single `&`/`|` (bitwise) from double `&&`/`||` (logical).
+
+Operator precedence follows C conventions (highest to lowest):
+
+1. `~` (unary bitwise NOT)
+2. `<<`, `>>` (shifts)
+3. `&` (bitwise AND)
+4. `^` (bitwise XOR)
+5. `|` (bitwise OR)
+6. `&&` (logical AND)
+7. `||` (logical OR)
+
+All bitwise operations work on the `long` representation of numbers. Results that fit in 32 bits are returned as `Integer`, otherwise as `Long`.
+
+Bitwise compound assignment operators are also supported:
+
+```
+flags = 0xFF
+flags &= 0x0F       // AND assign
+flags |= 0x80       // OR assign
+flags ^= 0x01       // XOR assign
+flags <<= 4         // left shift assign
+flags >>= 2         // right shift assign
+```
+
+Example — extracting color channels from an RGB value:
+
+```
+color = 0x1A803C
+red = (color >> 16) & 0xFF
+green = (color >> 8) & 0xFF
+blue = color & 0xFF
+emit "R=${red?c} G=${green?c} B=${blue?c}\n"
+// Output: R=26 G=128 B=60
+```
+
+---
+
+## Block Directives
+
+Block directives use keyword syntax with `/keyword` closers. Every closing tag also has an `end` alias — both styles can be used interchangeably:
+
+| Slash style | Keyword style |
+|---|---|
+| `/if` | `endif` |
+| `/list` | `endlist` |
+| `/macro` | `endmacro` |
+| `/function` | `endfunction` |
+| `/switch` | `endswitch` |
+| `/sep` | `endsep` |
+| `/items` | `enditems` |
+| `/attempt` | `endattempt` |
+| `/autoesc` | `endautoesc` |
+| `/noautoesc` | `endnoautoesc` |
+
+### if / elseif / else
+
+```
+if user.active
+  emit "Welcome back, ${user.name}!\n"
+elseif user.pending
+  emit "Your account is pending.\n"
+else
+  emit "Please register.\n"
+endif
+```
+
+Conditions are terminated by end-of-line. The `>` and `>=` operators work without parentheses (unlike classic mode):
+
+```
+if score > 90
+  emit "Excellent!\n"
+endif
+```
+
+### Multiline expressions
+
+Wrap the expression in `()` to span multiple lines. Inside parentheses, newlines are ignored:
+
+```
+if (longConditionA &&
+    longConditionB &&
+    longConditionC)
+  emit "all true\n"
+endif
+```
+
+This works for any directive that takes an expression — `if`, `elseif`, `list`, `switch`, `return`, assignments, etc.
+
+### Line continuation with `\`
+
+A backslash `\` at the end of a line continues the statement on the next line. This is an alternative to parentheses for splitting long lines:
+
+```
+local s = ("#define " + name + " ")?right_pad(align) + \
+          default
+
+if longConditionA && \
+   longConditionB && \
+   longConditionC
+  emit "all true\n"
+endif
+```
+
+Both `()` and `\` can be used — choose whichever reads better in context.
+
+### list
+
+```
+list users as user
+  emit "${user.name}\n"
+endlist
+```
+
+With key-value iteration:
+
+```
+list settings as key, value
+  emit "${key} = ${value}\n"
+endlist
+```
+
+With `else` for empty lists:
+
+```
+list results as result
+  emit "${result}\n"
+else
+  emit "No results found.\n"
+endlist
+```
+
+### sep
+
+```
+list items as item
+  emit item
+  sep
+    emit ", "
+  endsep
+endlist
+// Output: a, b, c
+```
+
+### items
+
+The alternate `list` form uses `items` to separate the iterable expression from the loop variable. This allows content before and after the loop, and an `else` that fires when the list is empty:
+
+```
+list users
+  emit "<ul>\n"
+  items as user
+    emit "  <li>${user.name}</li>\n"
+  enditems
+  emit "</ul>\n"
+else
+  emit "<p>No users.</p>\n"
+endlist
+```
+
+### switch / case / default
+
+```
+switch color
+case "red"
+  emit "#FF0000"
+  break
+case "green"
+  emit "#00FF00"
+  break
+default
+  emit "#000000"
+endswitch
+```
+
+---
+
+## Control Flow
+
+### break and continue
+
+```
+list items as item
+  if item == "skip"
+    continue
+  endif
+  if item == "stop"
+    break
+  endif
+  emit "${item}\n"
+endlist
+```
+
+### return
+
+Inside a function, `return` provides the return value:
+
+```
+function double(n)
+  return n * 2
+endfunction
+```
+
+Inside a macro, `return` exits early:
+
+```
+macro conditionalGreet(name)
+  if !name?has_content
+    return
+  endif
+  emit "Hello, ${name}!\n"
+endmacro
+```
+
+### stop
+
+Aborts template processing with an error message:
+
+```
+if !requiredParam??
+  stop "Missing required parameter: requiredParam"
+endif
+```
+
+### attempt / recover
+
+Error handling — if the `attempt` block fails, execution continues in the `recover` block:
+
+```
+attempt
+  result = riskyOperation()
+recover
+  emit "Operation failed, using default.\n"
+  result = defaultValue
+endattempt
+```
+
+---
+
+## Macros and Functions
+
+### macro
+
+```
+macro page(title, body)
+  emit "<!DOCTYPE html>\n"
+  emit "<html><head><title>${title}</title></head>\n"
+  emit "<body>${body}</body></html>\n"
+endmacro
+
+page("Home", "Welcome!")
+```
+
+Parameters can have defaults:
+
+```
+macro button(label, type = "submit")
+  emit "<button type=\"${type}\">${label}</button>\n"
+endmacro
+
+button("Save")
+button("Cancel", "button")
+```
+
+### function
+
+```
+function max(a, b)
+  if (a > b)
+    return a
+  else
+    return b
+  endif
+endfunction
+
+emit max(10, 20)?c
+// Output: 20
+```
+
+### Calling macros and functions
+
+Use `name(args)` syntax with positional or named arguments:
+
+```
+greet("World")
+x = add(1, 2)
+```
+
+Namespace-qualified calls use dot notation:
+
+```
+import "lib/utils.ftlc" as u
+u.formatText("hello", 80)
+```
+
+Named arguments use `name=value` syntax, separated by commas:
+
+```
+generatePrototype(
+  name   = "myFunc",
+  ctype  = "void",
+  params = ["int a", "int b"]
+)
+```
+
+### Method-style function calls (`?`)
+
+A function can be called with `?` syntax, where the value on the left becomes the function's first argument:
+
+```
+function shout(s)
+  return s?upper_case
+endfunction
+
+emit "hi"?shout()        // same as shout("hi") → "HI"
+```
+
+`x?name(args)` is exactly equivalent to `name(x, args)` — it's pure syntactic sugar. The benefit is readability when chaining transformations, which read left-to-right in the order they apply:
+
+```
+emit text?trimmed()?shout()?indent("  ")
+// same as: indent(shout(trimmed(text)), "  ")
+```
+
+Name resolution follows the usual rules — bare names resolve in the current namespace, dotted names in an imported one:
+
+```
+import "lib/utils.ftlc" as u
+emit name?u.format()     // same as u.format(name)
+```
+
+**Built-ins always take precedence.** `x?upper_case` is the built-in, even if you define a function named `upper_case`. The `?name(...)` form only resolves to a function when `name` is not a built-in.
+
+This is available **only in code-first mode**. In classic `.ftl`, a function body can produce text whose presence depends on whitespace-stripping settings, so calling a function in an expression context could have surprising output side effects. Code-first mode produces output only via `emit`, so a function call in an expression is guaranteed to have no hidden output — which is what makes this safe here.
+
+### nested
+
+Inside a macro, `nested` outputs the caller-provided body content:
+
+```
+macro wrapper(title)
+  emit "<div class=\"box\">\n"
+  emit "  <h2>${title}</h2>\n"
+  nested
+  emit "</div>\n"
+endmacro
+```
+
+`nested` can also pass loop variables back to the caller:
+
+```
+macro repeat(count)
+  list 1..count as i
+    nested i
+  endlist
+endmacro
+```
+
+---
+
+## import and include
+
+```
+import "lib/utils.ftl" as u
+include "header.ftl"
+```
 
 ---
 
@@ -382,393 +843,6 @@ The `\e` escape and text block normalization both work in classic mode too — o
 
 ---
 
-## Variables and Assignment
-
-Assignment uses bare `name = value` syntax. Scoping is automatic:
-
-- At template level: assigns to the current namespace (equivalent to `<#assign>`)
-- Inside a macro or function: assigns to local scope (equivalent to `<#local>`)
-
-```
-// Template level — namespace scope
-x = 1
-name = "World"
-items = ["a", "b", "c"]
-
-macro greet(who)
-  // Inside macro — local scope
-  greeting = "Hello, ${who}"
-  emit greeting
-/macro
-```
-
-### Explicit scope keywords
-
-Use `assign`, `local`, and `global` to explicitly control scope. This is especially useful inside macros and functions where bare assignment always goes to local scope:
-
-```
-macro compute()
-  local temp = heavyCalc()     // local to this call
-  assign result = temp * 2     // writes to template namespace
-  global cached = result       // writes to global scope
-endmacro
-```
-
-| Keyword | Scope | Equivalent classic FTL |
-|---|---|---|
-| *(bare)* | Auto: namespace at top level, local in macro/function | — |
-| `assign` | Current namespace | `<#assign>` |
-| `local` | Local (macro/function only) | `<#local>` |
-| `global` | Global | `<#global>` |
-
-### Compound assignment operators
-
-```
-x = 10
-x += 5
-x -= 2
-x *= 3
-x /= 4
-x %= 3
-x++
-x--
-```
-
-These work with all scope keywords: `assign x += 1`, `local count++`, `global total -= n`.
-
----
-
-## Block Directives
-
-Block directives use keyword syntax with `/keyword` closers. Every closing tag also has an `end` alias — both styles can be used interchangeably:
-
-| Slash style | Keyword style |
-|---|---|
-| `/if` | `endif` |
-| `/list` | `endlist` |
-| `/macro` | `endmacro` |
-| `/function` | `endfunction` |
-| `/switch` | `endswitch` |
-| `/sep` | `endsep` |
-| `/items` | `enditems` |
-| `/attempt` | `endattempt` |
-| `/autoesc` | `endautoesc` |
-| `/noautoesc` | `endnoautoesc` |
-
-### if / elseif / else
-
-```
-if user.active
-  emit "Welcome back, ${user.name}!\n"
-elseif user.pending
-  emit "Your account is pending.\n"
-else
-  emit "Please register.\n"
-endif
-```
-
-Conditions are terminated by end-of-line. The `>` and `>=` operators work without parentheses (unlike classic mode):
-
-```
-if score > 90
-  emit "Excellent!\n"
-endif
-```
-
-### Multiline expressions
-
-Wrap the expression in `()` to span multiple lines. Inside parentheses, newlines are ignored:
-
-```
-if (longConditionA &&
-    longConditionB &&
-    longConditionC)
-  emit "all true\n"
-endif
-```
-
-This works for any directive that takes an expression — `if`, `elseif`, `list`, `switch`, `return`, assignments, etc.
-
-### Line continuation with `\`
-
-A backslash `\` at the end of a line continues the statement on the next line. This is an alternative to parentheses for splitting long lines:
-
-```
-local s = ("#define " + name + " ")?right_pad(align) + \
-          default
-
-if longConditionA && \
-   longConditionB && \
-   longConditionC
-  emit "all true\n"
-endif
-```
-
-Both `()` and `\` can be used — choose whichever reads better in context.
-
-### list
-
-```
-list users as user
-  emit "${user.name}\n"
-endlist
-```
-
-With key-value iteration:
-
-```
-list settings as key, value
-  emit "${key} = ${value}\n"
-endlist
-```
-
-With `else` for empty lists:
-
-```
-list results as result
-  emit "${result}\n"
-else
-  emit "No results found.\n"
-endlist
-```
-
-### sep
-
-```
-list items as item
-  emit item
-  sep
-    emit ", "
-  endsep
-endlist
-// Output: a, b, c
-```
-
-### items
-
-The alternate `list` form uses `items` to separate the iterable expression from the loop variable. This allows content before and after the loop, and an `else` that fires when the list is empty:
-
-```
-list users
-  emit "<ul>\n"
-  items as user
-    emit "  <li>${user.name}</li>\n"
-  enditems
-  emit "</ul>\n"
-else
-  emit "<p>No users.</p>\n"
-endlist
-```
-
-### switch / case / default
-
-```
-switch color
-case "red"
-  emit "#FF0000"
-  break
-case "green"
-  emit "#00FF00"
-  break
-default
-  emit "#000000"
-endswitch
-```
-
----
-
-## Macros and Functions
-
-### macro
-
-```
-macro page(title, body)
-  emit "<!DOCTYPE html>\n"
-  emit "<html><head><title>${title}</title></head>\n"
-  emit "<body>${body}</body></html>\n"
-endmacro
-
-page("Home", "Welcome!")
-```
-
-Parameters can have defaults:
-
-```
-macro button(label, type = "submit")
-  emit "<button type=\"${type}\">${label}</button>\n"
-endmacro
-
-button("Save")
-button("Cancel", "button")
-```
-
-### function
-
-```
-function max(a, b)
-  if (a > b)
-    return a
-  else
-    return b
-  endif
-endfunction
-
-emit max(10, 20)?c
-// Output: 20
-```
-
-### Calling macros and functions
-
-Use `name(args)` syntax with positional or named arguments:
-
-```
-greet("World")
-x = add(1, 2)
-```
-
-Namespace-qualified calls use dot notation:
-
-```
-import "lib/utils.ftlc" as u
-u.formatText("hello", 80)
-```
-
-Named arguments use `name=value` syntax, separated by commas:
-
-```
-generatePrototype(
-  name   = "myFunc",
-  ctype  = "void",
-  params = ["int a", "int b"]
-)
-```
-
-### Method-style function calls (`?`)
-
-A function can be called with `?` syntax, where the value on the left becomes the function's first argument:
-
-```
-function shout(s)
-  return s?upper_case
-endfunction
-
-emit "hi"?shout()        // same as shout("hi") → "HI"
-```
-
-`x?name(args)` is exactly equivalent to `name(x, args)` — it's pure syntactic sugar. The benefit is readability when chaining transformations, which read left-to-right in the order they apply:
-
-```
-emit text?trimmed()?shout()?indent("  ")
-// same as: indent(shout(trimmed(text)), "  ")
-```
-
-Name resolution follows the usual rules — bare names resolve in the current namespace, dotted names in an imported one:
-
-```
-import "lib/utils.ftlc" as u
-emit name?u.format()     // same as u.format(name)
-```
-
-**Built-ins always take precedence.** `x?upper_case` is the built-in, even if you define a function named `upper_case`. The `?name(...)` form only resolves to a function when `name` is not a built-in.
-
-This is available **only in code-first mode**. In classic `.ftl`, a function body can produce text whose presence depends on whitespace-stripping settings, so calling a function in an expression context could have surprising output side effects. Code-first mode produces output only via `emit`, so a function call in an expression is guaranteed to have no hidden output — which is what makes this safe here.
-
-### nested
-
-Inside a macro, `nested` outputs the caller-provided body content:
-
-```
-macro wrapper(title)
-  emit "<div class=\"box\">\n"
-  emit "  <h2>${title}</h2>\n"
-  nested
-  emit "</div>\n"
-endmacro
-```
-
-`nested` can also pass loop variables back to the caller:
-
-```
-macro repeat(count)
-  list 1..count as i
-    nested i
-  endlist
-endmacro
-```
-
----
-
-## Control Flow
-
-### break and continue
-
-```
-list items as item
-  if item == "skip"
-    continue
-  endif
-  if item == "stop"
-    break
-  endif
-  emit "${item}\n"
-endlist
-```
-
-### return
-
-Inside a function, `return` provides the return value:
-
-```
-function double(n)
-  return n * 2
-endfunction
-```
-
-Inside a macro, `return` exits early:
-
-```
-macro conditionalGreet(name)
-  if !name?has_content
-    return
-  endif
-  emit "Hello, ${name}!\n"
-endmacro
-```
-
-### stop
-
-Aborts template processing with an error message:
-
-```
-if !requiredParam??
-  stop "Missing required parameter: requiredParam"
-endif
-```
-
-### attempt / recover
-
-Error handling — if the `attempt` block fails, execution continues in the `recover` block:
-
-```
-attempt
-  result = riskyOperation()
-recover
-  emit "Operation failed, using default.\n"
-  result = defaultValue
-endattempt
-```
-
----
-
-## import and include
-
-```
-import "lib/utils.ftl" as u
-include "header.ftl"
-```
-
----
-
 ## XML/Tree Processing
 
 ### visit and recurse
@@ -835,123 +909,9 @@ endnoautoesc
 
 ---
 
-## Hex Literals
+## Built-in reference
 
-Hex integer literals are supported in **both** classic and code-first modes:
-
-```
-x = 0xFF        // 255
-y = 0x00FF00    // 65280
-color = 0xDEAD  // 57005
-```
-
-Values that fit in 32 bits produce `Integer`, larger values produce `Long`.
-
----
-
-## Expressions
-
-Code-first mode supports the full FreeMarker expression language:
-
-- Arithmetic: `+`, `-`, `*`, `/`, `%`
-- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
-- Logical: `&&`, `||`, `!`
-- String concatenation: `+`
-- Built-ins: `?c`, `?string`, `?size`, `?has_content`, etc.
-- Default values: `name!"default"`
-- Sequence literals: `["a", "b", "c"]`
-- Hash literals: `{"key": "value"}`
-- Method calls: `obj.method(args)`
-- Ranges: `0..10`, `0..<10`
-
-The `>` and `>=` operators work without parentheses (unlike classic mode where they conflict with the tag-closing `>`).
-
-### Bitwise operators (code-first only)
-
-Code-first mode adds bitwise operators, which are not available in classic FreeMarker:
-
-| Operator | Meaning | Example |
-|---|---|---|
-| `&` | Bitwise AND | `0xFF & 0x0F` → 15 |
-| `\|` | Bitwise OR | `0x0F \| 0xF0` → 255 |
-| `^` | Bitwise XOR | `0xFF ^ 0x0F` → 240 |
-| `~` | Bitwise NOT | `~0xFF` → -256 |
-| `<<` | Left shift | `1 << 8` → 256 |
-| `>>` | Right shift | `256 >> 8` → 1 |
-
-`&&` and `||` remain logical operators. The parser distinguishes single `&`/`|` (bitwise) from double `&&`/`||` (logical).
-
-Operator precedence follows C conventions (highest to lowest):
-
-1. `~` (unary bitwise NOT)
-2. `<<`, `>>` (shifts)
-3. `&` (bitwise AND)
-4. `^` (bitwise XOR)
-5. `|` (bitwise OR)
-6. `&&` (logical AND)
-7. `||` (logical OR)
-
-All bitwise operations work on the `long` representation of numbers. Results that fit in 32 bits are returned as `Integer`, otherwise as `Long`.
-
-Bitwise compound assignment operators are also supported:
-
-```
-flags = 0xFF
-flags &= 0x0F       // AND assign
-flags |= 0x80       // OR assign
-flags ^= 0x01       // XOR assign
-flags <<= 4         // left shift assign
-flags >>= 2         // right shift assign
-```
-
-Example — extracting color channels from an RGB value:
-
-```
-color = 0x1A803C
-red = (color >> 16) & 0xFF
-green = (color >> 8) & 0xFF
-blue = color & 0xFF
-emit "R=${red?c} G=${green?c} B=${blue?c}\n"
-// Output: R=26 G=128 B=60
-```
-
----
-
-## New Built-ins
-
-These built-ins are new additions, available in **both** classic and code-first modes.
-
-### `?tab_to(column)` / `?tab_to(column, fill)`
-
-Pads a string with spaces (or a custom fill character) until it reaches the target column width. If the string is already at or past the target column, it is returned unchanged — no truncation occurs.
-
-```
-"hello"?tab_to(20)           // "hello               "
-"hello"?tab_to(20, '.')      // "hello..............."
-"hello world"?tab_to(5)      // "hello world" (unchanged)
-```
-
-The camelCase alias `?tabTo` is also supported.
-
-**Parameters:**
-
-| # | Type | Required | Description |
-|---|---|---|---|
-| 1 | number | yes | Target column (0-based width) |
-| 2 | string | no | Single fill character (default: space) |
-
-**Use case** — aligning generated code:
-
-```
-// Code-first example: aligned field declarations
-list fields as field
-  emit "${field.type}"?tab_to(12) + "${field.name};"?tab_to(32) + "// ${field.comment}\n"
-endlist
-
-// Output:
-// int         count;                  // item count
-// String      name;                   // display name
-```
+These built-ins are available in **both** classic and code-first modes.
 
 ### `?indent(prefix)`
 
@@ -1014,7 +974,7 @@ text?indent("  ")?dedent("  ")   // returns original text
 
 ### `?pad_lines(column)` / `?pad_lines(column, fill)`
 
-Like `?tab_to` but operates on every line of a multi-line string. Each line is padded to the target column. Lines already at or past the column are left unchanged. Empty lines are not padded.
+Pads every line of a multi-line string to the target column. Lines already at or past the column are left unchanged. Empty lines are not padded. Unlike `?right_pad`, which pads the string as a whole, this pads each line independently — useful for aligning multi-line text.
 
 ```
 "int x;\nString name;\n"?pad_lines(20)
@@ -1164,7 +1124,6 @@ emit "}\n"
 | `0xFF` (not supported) | `0xFF` (both modes) |
 | (not available) | `&`, `\|`, `^`, `~`, `<<`, `>>` (bitwise) |
 | (not available) | `&=`, `\|=`, `^=`, `<<=`, `>>=` (bitwise assign) |
-| (not available) | `?tab_to(col)`, `?tab_to(col, fill)` (pad to column) |
 | (not available) | `emit expr to <target>` (multi-target output) |
 | (not available) | `read from <target>` (eager file read) |
 | (not available) | `readln from <target>` (lazy line iteration) |
