@@ -939,9 +939,23 @@ emit comment?indent(" * ")
 |---|---|---|---|
 | 1 | string | yes | Prefix to prepend to each line |
 
-### `?dedent(prefix)`
+### `?dedent()` / `?dedent(prefix)`
 
-Removes `prefix` from the beginning of each line, if present. Lines that don't start with the prefix are left unchanged. Symmetric with `?indent`.
+Removes a leading-whitespace prefix from each line. Two forms:
+
+**No-argument form `?dedent()`** — Python `textwrap.dedent`-style. Finds the longest leading whitespace (spaces and tabs only) that is a common prefix of every non-empty line, and removes it. Robust to imperfect input. Empty/whitespace-only lines are ignored when computing the prefix and pass through unchanged.
+
+```
+"    int x;\n  int y;\n      int z;"?dedent()
+// Output (common prefix is "  ", 2 spaces):
+//   int x;
+// int y;
+//     int z;
+```
+
+A leading tab and a leading space are distinct characters — they have no common prefix. This matches Python's behaviour.
+
+**Explicit-prefix form `?dedent(prefix)`** — removes the given prefix from each line that starts with it; leaves other lines unchanged. Use when you want exact control.
 
 ```
 body = "    int x;\n    int y;\n"
@@ -970,37 +984,39 @@ text?indent("  ")?dedent("  ")   // returns original text
 
 | # | Type | Required | Description |
 |---|---|---|---|
-| 1 | string | yes | Prefix to remove from each line |
+| 1 | string | no | Explicit prefix to remove from each line. Omit for common-leading-whitespace mode. |
 
-### `?pad_lines(column)` / `?pad_lines(column, fill)`
+### `?right_pad_lines(width)` / `?right_pad_lines(width, fill)`
 
-Pads every line of a multi-line string to the target column. Lines already at or past the column are left unchanged. Empty lines are not padded. Unlike `?right_pad`, which pads the string as a whole, this pads each line independently — useful for aligning multi-line text.
+Pads every line of a multi-line string on the right with spaces (or `fill`) up to `width`. Lines already at or past `width` are left unchanged. Empty lines are not padded. Unlike `?right_pad`, which pads the string as a whole, this pads each line independently — useful for aligning multi-line text.
 
 ```
-"int x;\nString name;\n"?pad_lines(20)
+"int x;\nString name;\n"?right_pad_lines(20)
 // "int x;              \nString name;        \n"
 ```
 
 With a custom fill character:
 
 ```
-"a\nbb\n"?pad_lines(10, '.')
+"a\nbb\n"?right_pad_lines(10, '.')
 // "a.........\nbb........\n"
 ```
 
-The camelCase alias `?padLines` is also supported.
+The camelCase alias `?rightPadLines` is also supported.
 
 **Parameters:**
 
 | # | Type | Required | Description |
 |---|---|---|---|
-| 1 | number | yes | Target column width |
+| 1 | number | yes | Target width (in characters, not display columns — see note below) |
 | 2 | string | no | Single fill character (default: space) |
+
+> **Note on widths:** widths are counted in Java `char`s (UTF-16 code units), not visual display columns — same as `?right_pad` / `?left_pad`. A tab counts as one character, not as "advance to next tab stop." If you need visual alignment for content containing tabs, expand them to spaces first.
 
 **Use case** — aligning multi-line output for trailing comments:
 
 ```
-emit code?pad_lines(40) // then append comments per line
+emit code?right_pad_lines(40) // then append comments per line
 ```
 
 ### `?wrap(width, firstPrefix, restPrefix)`
@@ -1028,9 +1044,11 @@ emit "A long comment that needs to be wrapped at a reasonable width"?wrap(40, "/
 
 | # | Type | Required | Description |
 |---|---|---|---|
-| 1 | number | yes | Maximum line width |
+| 1 | number | yes | Maximum line width (in characters, not display columns) |
 | 2 | string | yes | Prefix for the first line |
 | 3 | string | no | Prefix for subsequent lines (default: same as first) |
+
+> **Note on widths and whitespace:** as with `?right_pad_lines`, widths are counted in Java `char`s, not visual columns — a tab counts as one character. Word boundaries are detected via Java's `\s+`, which does **not** include U+00A0 (non-breaking space); so a non-breaking space stays inside a word and is never used as a break point. This is the intended behaviour — that's the whole purpose of a non-breaking space.
 
 ---
 

@@ -189,51 +189,107 @@ public class IndentAndWrapBuiltInTest {
                 eval("text?indent('  ')?dedent('  ')", model));
     }
 
-    // ---- ?pad_lines tests ----
+    // ---- ?dedent (no-args, Python textwrap.dedent-style) tests ----
 
     @Test
-    public void testPadLinesBasic() throws Exception {
+    public void testDedentNoArgsUniformIndent() throws Exception {
+        assertEquals("a\nb\nc",
+                eval("'    a\\n    b\\n    c'?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsMixedIndent() throws Exception {
+        // The longest common leading whitespace across non-empty lines is 2 spaces.
+        assertEquals("a\n  b\n    c",
+                eval("'  a\\n    b\\n      c'?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsRespectsEmptyLines() throws Exception {
+        // Empty/whitespace-only lines are ignored when computing the common prefix
+        // and pass through unchanged.
+        assertEquals("a\n\nb",
+                eval("'    a\\n\\n    b'?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsNoCommonPrefix() throws Exception {
+        // If lines have no common leading whitespace, nothing is stripped.
+        assertEquals("a\n    b",
+                eval("'a\\n    b'?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsTabAndSpaceDistinct() throws Exception {
+        // A leading tab and a leading space have no common prefix.
+        // (Same behaviour as Python textwrap.dedent.)
+        assertEquals("\ta\n    b",
+                eval("'\\ta\\n    b'?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsTabsOnly() throws Exception {
+        assertEquals("a\nb",
+                eval("'\\t\\ta\\n\\t\\tb'?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsEmptyString() throws Exception {
+        assertEquals("", eval("''?dedent()"));
+    }
+
+    @Test
+    public void testDedentNoArgsAlreadyDedented() throws Exception {
+        // No common leading whitespace => no change.
+        assertEquals("a\nb\nc",
+                eval("'a\\nb\\nc'?dedent()"));
+    }
+
+    // ---- ?right_pad_lines tests ----
+
+    @Test
+    public void testRightPadLinesBasic() throws Exception {
         assertEquals("a         \nbb        \nccc       \n",
-                eval("'a\\nbb\\nccc\\n'?pad_lines(10)"));
+                eval("'a\\nbb\\nccc\\n'?right_pad_lines(10)"));
     }
 
     @Test
-    public void testPadLinesWithFillChar() throws Exception {
+    public void testRightPadLinesWithFillChar() throws Exception {
         assertEquals("a.........\nbb........\n",
-                eval("'a\\nbb\\n'?pad_lines(10, '.')"));
+                eval("'a\\nbb\\n'?right_pad_lines(10, '.')"));
     }
 
     @Test
-    public void testPadLinesLinePastColumn() throws Exception {
+    public void testRightPadLinesLinePastColumn() throws Exception {
         // "long line" (9 chars) past column 5 — no padding
         // "ab" (2 chars) shorter than column 5 — padded
         assertEquals("long line\nab   \n",
-                eval("'long line\\nab\\n'?pad_lines(5)"));
+                eval("'long line\\nab\\n'?right_pad_lines(5)"));
     }
 
     @Test
-    public void testPadLinesNoTrailingNewline() throws Exception {
+    public void testRightPadLinesNoTrailingNewline() throws Exception {
         assertEquals("a         ",
-                eval("'a'?pad_lines(10)"));
+                eval("'a'?right_pad_lines(10)"));
     }
 
     @Test
-    public void testPadLinesEmpty() throws Exception {
-        assertEquals("", eval("''?pad_lines(10)"));
+    public void testRightPadLinesEmpty() throws Exception {
+        assertEquals("", eval("''?right_pad_lines(10)"));
     }
 
     @Test
-    public void testPadLinesCamelCase() throws Exception {
+    public void testRightPadLinesCamelCase() throws Exception {
         assertEquals("a    \nbb   \n",
-                eval("'a\\nbb\\n'?padLines(5)"));
+                eval("'a\\nbb\\n'?rightPadLines(5)"));
     }
 
     @Test
-    public void testPadLinesCodeAlignment() throws Exception {
+    public void testRightPadLinesCodeAlignment() throws Exception {
         // Practical use: align code for trailing comments
         Map<String, Object> model = new HashMap<>();
         model.put("code", "int x;\nString name;\nboolean active;\n");
-        String result = eval("code?pad_lines(20)", model);
+        String result = eval("code?right_pad_lines(20)", model);
         String[] lines = result.split("\n", -1);
         assertEquals("int x;              ", lines[0]);
         assertEquals("String name;        ", lines[1]);
