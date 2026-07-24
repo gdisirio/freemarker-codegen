@@ -24,9 +24,9 @@
 -failok: false
 
 Bundle-SymbolicName: ${moduleOrg}.${moduleName}
-Bundle-Version: ${versionForOSGi}
+Bundle-Version: ${codegenVersionForOSGi}
 Bundle-License: Apache License, Version 2.0; see: http://www.apache.org/licenses/LICENSE-2.0.txt
-Bundle-Vendor: freemarker.org
+Bundle-Vendor: io.github.gdisirio
 
 Export-Package: !freemarker.test.*, freemarker.*;version="${versionForOSGi}"
 # Important:
@@ -58,11 +58,13 @@ Bundle-RequiredExecutionEnvironment: JavaSE-16, JavaSE-15, JavaSE-14, JavaSE-13,
 
 # Non-OSGi meta:
 Main-Class: freemarker.core.CommandLine
-Extension-name: FreeMarker
+Extension-name: FreeMarker Codegen
 Specification-Title: FreeMarker
 Specification-Version: ${versionForMf}
-Specification-Vendor: freemarker.org
-Implementation-Title: FreeMarker
-Implementation-Version: ${versionForMf}
-Implementation-Vendor: freemarker.org
+Specification-Vendor: Apache Software Foundation
+Implementation-Title: FreeMarker Codegen
+Implementation-Version: ${codegenVersion}
+Implementation-Vendor: io.github.gdisirio
+FreeMarker-Version: ${version}
+Codegen-Version: ${codegenVersion}
 Automatic-Module-Name: freemarker

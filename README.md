@@ -2,6 +2,24 @@
 
 Code-first mode inverts FreeMarker's default behavior: **logic is the default** and text output requires explicit delimiters. This is designed for use cases where FreeMarker is used as a **code generation language** rather than a document template processor.
 
+## Versioning
+
+FreeMarker Codegen and the embedded Apache FreeMarker engine have independent versions:
+
+- `Configuration.getCodegenVersion()` and the `.codegen_version` / `.codegenVersion` special variables report the
+  Codegen release version.
+- `Configuration.getVersion()` and the `.version` special variable continue to report the upstream FreeMarker version
+  used for compatibility checks and `incompatible_improvements`.
+
+The authoritative values are stored together in
+`freemarker-core/src/main/resource-templates/freemarker/version.properties`.
+
+## FMPP integration
+
+FreeMarker Codegen can be used with FMPP by replacing the `freemarker.jar` in the FMPP installation with the JAR from
+this project. If necessary, rename `freemarker-codegen-gae-<version>.jar` to `freemarker.jar` so existing FMPP launch
+scripts continue to find it. Remove the original JAR rather than leaving both versions on the classpath.
+
 ## Why code-first mode?
 
 Standard FreeMarker was designed for HTML and document templating, where most of the file is literal text with occasional logic. When used for code generation, this model becomes a liability:

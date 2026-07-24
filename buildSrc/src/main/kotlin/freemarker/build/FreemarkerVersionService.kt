@@ -34,8 +34,9 @@ private val VERSION_PROPERTIES_PATH = listOf("freemarker", "version.properties")
 class FreemarkerVersionDef(versionFileTokens: Map<String, String>, versionProperties: Map<String, String>) {
     val versionFileTokens = versionFileTokens.toMap()
     val versionProperties = versionProperties.toMap()
-    val version = this.versionProperties["mavenVersion"]!!
-    val displayVersion = this.versionProperties["version"]!!
+    val freemarkerVersion = this.versionProperties["mavenVersion"]!!
+    val freemarkerDisplayVersion = this.versionProperties["version"]!!
+    val codegenVersion = this.versionProperties["codegenVersion"]!!
 }
 
 class FreemarkerVersionService constructor(

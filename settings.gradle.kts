@@ -17,7 +17,7 @@
  * under the License.
  */
 
-rootProject.name = "freemarker-gae"
+rootProject.name = "freemarker-codegen-gae"
 
 apply(from = rootDir.toPath().resolve("gradle").resolve("repositories.gradle.kts"))
 

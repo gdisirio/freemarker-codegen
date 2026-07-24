@@ -23,7 +23,7 @@ plugins {
     id("org.graalvm.buildtools.native") version "0.10.3"
 }
 
-group = "org.freemarker"
+group = "io.github.gdisirio"
 version = rootProject.version
 
 val graalSdkVersion = "24.1.1"

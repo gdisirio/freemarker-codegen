@@ -458,15 +458,18 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     private static final String JVM_DEFAULT = "JVM default";
     
     private static final Version VERSION;
+    private static final Version CODEGEN_VERSION;
     static {
         try {
             Properties props = ClassUtil.loadProperties(Configuration.class, VERSION_PROPERTIES_PATH);
             
             String versionString  = getRequiredVersionProperty(props, "version");
+            String codegenVersionString = getRequiredVersionProperty(props, "codegenVersion");
             
             final Boolean gaeCompliant = Boolean.valueOf(getRequiredVersionProperty(props, "isGAECompliant"));
             
             VERSION = new Version(versionString, gaeCompliant, null);
+            CODEGEN_VERSION = new Version(codegenVersionString);
         } catch (IOException e) {
             throw new RuntimeException("Failed to load and parse " + VERSION_PROPERTIES_PATH, e);
         }
@@ -3808,6 +3811,17 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
      */ 
     public static Version getVersion() {
         return VERSION;
+    }
+
+    /**
+     * Returns the FreeMarker Codegen version. This is independent of the embedded FreeMarker version returned by
+     * {@link #getVersion()}, which remains the version used for compatibility checks and
+     * {@code incompatible_improvements}.
+     *
+     * @since 2.3.35
+     */
+    public static Version getCodegenVersion() {
+        return CODEGEN_VERSION;
     }
     
     /**

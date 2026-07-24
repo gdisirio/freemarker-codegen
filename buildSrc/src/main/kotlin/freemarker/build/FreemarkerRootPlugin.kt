@@ -47,7 +47,7 @@ open class FreemarkerRootPlugin : Plugin<Project> {
         private val mainSourceSet = java.sourceSets.named(SourceSet.MAIN_SOURCE_SET_NAME).get()
 
         fun configure() {
-            project.version = ext.versionDef.version
+            project.version = ext.versionDef.codegenVersion
             project.extensions.add("freemarkerRoot", ext)
 
             project.configure<JavaPluginExtension> {

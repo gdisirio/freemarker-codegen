@@ -64,6 +64,8 @@ final class BuiltinVariable extends Expression {
     static final String PASS = "pass";
     static final String VARS = "vars";
     static final String VERSION = "version";
+    static final String CODEGEN_VERSION_CC = "codegenVersion";
+    static final String CODEGEN_VERSION = "codegen_version";
     static final String INCOMPATIBLE_IMPROVEMENTS_CC = Configuration.INCOMPATIBLE_IMPROVEMENTS_KEY_CAMEL_CASE;
     static final String INCOMPATIBLE_IMPROVEMENTS = Configuration.INCOMPATIBLE_IMPROVEMENTS_KEY;
     static final String ERROR = "error";
@@ -88,6 +90,8 @@ final class BuiltinVariable extends Expression {
         AUTO_ESC,
         CALLER_TEMPLATE_NAME_CC,
         CALLER_TEMPLATE_NAME,
+        CODEGEN_VERSION_CC,
+        CODEGEN_VERSION,
         CURRENT_NODE_CC,
         CURRENT_TEMPLATE_NAME_CC,
         CURRENT_NODE,
@@ -251,6 +255,9 @@ final class BuiltinVariable extends Expression {
         }
         if (name == VERSION) {
             return new SimpleScalar(Configuration.getVersionNumber());
+        }
+        if (name == CODEGEN_VERSION || name == CODEGEN_VERSION_CC) {
+            return new SimpleScalar(Configuration.getCodegenVersion().toString());
         }
         if (name == INCOMPATIBLE_IMPROVEMENTS || name == INCOMPATIBLE_IMPROVEMENTS_CC) {
             return new SimpleScalar(env.getConfiguration().getIncompatibleImprovements().toString());

@@ -36,7 +36,9 @@ public class CommandLine {
         Version ver = Configuration.getVersion();
         
         System.out.println();
-        System.out.print("Apache FreeMarker version ");
+        System.out.print("FreeMarker Codegen version ");
+        System.out.println(Configuration.getCodegenVersion());
+        System.out.print("Based on Apache FreeMarker version ");
         System.out.print(ver);
         
         /* If the version number doesn't already contain the build date and it's known, print it: */
@@ -53,7 +55,7 @@ public class CommandLine {
         System.out.println();
         
         if (ver.isGAECompliant() != null) {
-            System.out.print("Google App Engine complian variant: ");
+            System.out.print("Google App Engine compliant variant: ");
             System.out.println(ver.isGAECompliant().booleanValue() ? "Yes" : "No");
         }
     }

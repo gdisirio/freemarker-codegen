@@ -368,6 +368,7 @@ public class ConfigurationTest extends TestCase {
         Version v = Configuration.getVersion();
         assertTrue(v.intValue() > _VersionInts.V_2_3_20);
         assertSame(v.toString(), Configuration.getVersionNumber());
+        assertFalse(v.toString().equals(Configuration.getCodegenVersion().toString()));
         
         try {
             new Configuration(new Version(999, 1, 2));

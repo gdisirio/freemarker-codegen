@@ -31,7 +31,7 @@ plugins {
     id("eclipse")
 }
 
-group = "org.freemarker"
+group = "io.github.gdisirio"
 
 val fmExt = freemarkerRoot
 
@@ -256,12 +256,13 @@ tasks.named<Javadoc>(JavaPlugin.JAVADOC_TASK_NAME) {
     })
 
     (options as StandardJavadocDocletOptions).apply {
-        val displayVersion = fmExt.versionDef.displayVersion
+        val freemarkerVersion = fmExt.versionDef.freemarkerDisplayVersion
+        val codegenVersion = fmExt.versionDef.codegenVersion
         val javadocEncoding = StandardCharsets.UTF_8
 
         locale = "en_US"
         encoding = javadocEncoding.name()
-        windowTitle = "FreeMarker ${displayVersion} API"
+        windowTitle = "FreeMarker Codegen ${codegenVersion} API (FreeMarker ${freemarkerVersion})"
 
         links("https://docs.oracle.com/en/java/javase/16/docs/api/")
 
@@ -269,7 +270,7 @@ tasks.named<Javadoc>(JavaPlugin.JAVADOC_TASK_NAME) {
         version(true)
         docEncoding = javadocEncoding.name()
         charSet = javadocEncoding.name()
-        docTitle = "FreeMarker ${displayVersion}"
+        docTitle = "FreeMarker Codegen ${codegenVersion} (FreeMarker ${freemarkerVersion})"
 
         // There are too many to check
         addStringOption("Xdoclint:-missing", "-quiet")
@@ -293,20 +294,18 @@ registerManualTask("manualOnline", "en_US", false)
 
 publishing {
     repositories {
-        maven {
-            val snapshot = fmExt.versionDef.version.endsWith("-SNAPSHOT")
-            val defaultDeployUrl = if (snapshot) "https://repository.apache.org/content/repositories/snapshots" else "https://repository.apache.org/service/local/staging/deploy/maven2"
-            setUrl(providers.gradleProperty("freemarkerDeployUrl").getOrElse(defaultDeployUrl))
-            name = providers.gradleProperty("freemarkerDeployServerId").getOrElse("apache.releases.https")
+        val deployUrl = providers.gradleProperty("freemarkerDeployUrl")
+        if (deployUrl.isPresent) {
+            maven {
+                setUrl(deployUrl.get())
+                name = providers.gradleProperty("freemarkerDeployServerId").getOrElse("codegen")
 
-            val apacheUser = providers.gradleProperty("freemarker.deploy.apache.user")
-                .getOrElse("")
-
-            if (apacheUser.isNotEmpty()) {
-                credentials {
-                    username = apacheUser
-                    password = providers.gradleProperty("freemarker.deploy.apache.password")
-                        .getOrElse("")
+                val deployUser = providers.gradleProperty("freemarker.deploy.user").getOrElse("")
+                if (deployUser.isNotEmpty()) {
+                    credentials {
+                        username = deployUser
+                        password = providers.gradleProperty("freemarker.deploy.password").getOrElse("")
+                    }
                 }
             }
         }
@@ -320,6 +319,9 @@ publishing {
         val mainPublication = create<MavenPublication>("main") {
             from(components.getByName("java"))
             pom {
+                properties.put("freemarker.version", fmExt.versionDef.freemarkerDisplayVersion)
+                properties.put("freemarker.maven.version", fmExt.versionDef.freemarkerVersion)
+
                 withXml {
                     val headerComment = asElement().ownerDocument.createComment("""
 
@@ -346,18 +348,14 @@ publishing {
                 }
 
                 packaging = "jar"
-                name.set("Apache FreeMarker")
+                name.set("FreeMarker Codegen")
                 description.set("\n" + """
-                    FreeMarker is a "template engine"; a generic tool to generate text output based on templates.
-                    This is the Google App Engine (\"gae\") compliant variation.
+                    FreeMarker Codegen extends Apache FreeMarker with an opt-in code-first syntax
+                    and code-generation-oriented output features. This is the Google App Engine
+                    compliant variation.
                     """.trimIndent().prependIndent("    ") + "\n  "
                 )
-                url.set("https://freemarker.apache.org/")
-
-                organization {
-                    name.set("Apache Software Foundation")
-                    url.set("http://apache.org")
-                }
+                url.set("https://github.com/gdisirio/freemarker-codegen")
 
                 licenses {
                     license {
@@ -367,37 +365,24 @@ publishing {
                     }
                 }
 
+                developers {
+                    developer {
+                        id.set("gdisirio")
+                        name.set("Giovanni Di Sirio")
+                        url.set("https://github.com/gdisirio")
+                    }
+                }
+
                 scm {
-                    connection.set("scm:git:https://git-wip-us.apache.org/repos/asf/freemarker.git")
-                    developerConnection.set("scm:git:https://git-wip-us.apache.org/repos/asf/freemarker.git")
-                    url.set("https://git-wip-us.apache.org/repos/asf?p=freemarker.git")
-                    tag.set("v${fmExt.versionDef.version}")
+                    connection.set("scm:git:https://github.com/gdisirio/freemarker-codegen.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/gdisirio/freemarker-codegen.git")
+                    url.set("https://github.com/gdisirio/freemarker-codegen")
+                    tag.set("version-${fmExt.versionDef.codegenVersion}")
                 }
 
                 issueManagement {
-                    system.set("jira")
-                    url.set("https://issues.apache.org/jira/browse/FREEMARKER/")
-                }
-
-                mailingLists {
-                    mailingList {
-                        name.set("FreeMarker developer list")
-                        post.set("dev@freemarker.apache.org")
-                        subscribe.set("dev-subscribe@freemarker.apache.org")
-                        unsubscribe.set("dev-unsubscribe@freemarker.apache.org")
-                        archive.set("http://mail-archives.apache.org/mod_mbox/freemarker-dev/")
-                    }
-                    mailingList {
-                        name.set("FreeMarker commit and Jira notifications list")
-                        post.set("notifications@freemarker.apache.org")
-                        subscribe.set("notifications-subscribe@freemarker.apache.org")
-                        unsubscribe.set("notifications-unsubscribe@freemarker.apache.org")
-                        archive.set("http://mail-archives.apache.org/mod_mbox/freemarker-notifications/")
-                    }
-                    mailingList {
-                        name.set("FreeMarker management private")
-                        post.set("private@freemarker.apache.org")
-                    }
+                    system.set("GitHub")
+                    url.set("https://github.com/gdisirio/freemarker-codegen/issues")
                 }
             }
         }
@@ -419,7 +404,7 @@ tasks.withType<PublishToMavenRepository>().configureEach {
     }
 }
 
-val distArchiveBaseName = "apache-${name}"
+val distArchiveBaseName = name
 val distDir = layout.buildDirectory.map { it.dir("distributions") }
 
 fun registerDistSupportTasks(archiveTask: TaskProvider<Tar>) {
@@ -443,8 +428,12 @@ fun registerDistSupportTasks(archiveTask: TaskProvider<Tar>) {
 }
 
 fun registerCommonFiles(tar: Tar) {
-    tar.from("README.md") {
-        filter { content -> content.replace("{version}", fmExt.versionDef.displayVersion) }
+    tar.from(files("README.md", "README-freemarker.md")) {
+        filter { content ->
+            content
+                .replace("{version}", fmExt.versionDef.freemarkerDisplayVersion)
+                .replace("{codegenVersion}", fmExt.versionDef.codegenVersion)
+        }
     }
 
     tar.from(files("NOTICE", "RELEASE-NOTES"))
@@ -490,11 +479,11 @@ val createBuildInfo = tasks.register("createBuildInfo") {
             setProperty("java.vendor", System.getProperty("java.vendor"))
             setProperty("os.name", System.getProperty("os.name"))
 
-            setProperty("source.scm.uri", "scm:git:https://git-wip-us.apache.org/repos/asf/freemarker.git")
-            setProperty("source.scm.tag", "v${fmExt.versionDef.version}")
+            setProperty("source.scm.uri", "scm:git:https://github.com/gdisirio/freemarker-codegen.git")
+            setProperty("source.scm.tag", "version-${fmExt.versionDef.codegenVersion}")
 
             setProperty("build-tool", "gradle")
-            setProperty("build.setup", "https://github.com/apache/freemarker/blob/2.3-gae/README.md#building-freemarker")
+            setProperty("build.setup", "https://github.com/gdisirio/freemarker-codegen")
 
         }
 

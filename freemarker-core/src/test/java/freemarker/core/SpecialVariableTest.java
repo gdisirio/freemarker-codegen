@@ -48,6 +48,13 @@ public class SpecialVariableTest extends TemplateTest {
     }
 
     @Test
+    public void testCodegenVersion() throws Exception {
+        String versionStr = Configuration.getCodegenVersion().toString();
+        assertOutput("${.codegenVersion}", versionStr);
+        assertOutput("${.codegen_version}", versionStr);
+    }
+
+    @Test
     public void testIncompationImprovements() throws Exception {
         assertOutput(
                 "${.incompatibleImprovements}",

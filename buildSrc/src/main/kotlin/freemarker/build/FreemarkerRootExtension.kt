@@ -295,8 +295,7 @@ class FreemarkerRootExtension constructor(
     private val testUtilsConfigured = AtomicBoolean(false)
 
     fun isPublishedVersion(): Boolean {
-        return !versionDef.version.endsWith("-SNAPSHOT") ||
-                !versionDef.displayVersion.contains("-nightly")
+        return !versionDef.codegenVersion.endsWith("-SNAPSHOT")
     }
 
     private fun configureTestUtils() {
