@@ -158,4 +158,13 @@ public class CodeFirstBitwiseTest {
         // Extract green channel from RGB color
         assertEquals("128", run("color = 0x1A803C\ngreen = (color >> 8) & 0xFF\nemit green?c\n"));
     }
+
+    @Test
+    public void testAllBitsSetMask() throws Exception {
+        // 0xFFFFFFFFFFFFFFFF exceeds the range of a signed long, so it's a BigInteger.
+        // Bitwise operations use the low 64 bits of the value, so an all-bits-set mask
+        // behaves as it does in C/Java.
+        assertEquals("255", run("emit (0xFFFFFFFFFFFFFFFF & 0xFF)?c\n"));
+        assertEquals("0", run("emit (0xFFFFFFFFFFFFFFFF & 0x0)?c\n"));
+    }
 }

@@ -65,6 +65,25 @@ public class HexLiteralTest extends TemplateTest {
         assertOutput("${0x80000000?c}", "2147483648");
         assertOutput("${0xFFFFFFFF?c}", "4294967295");
         assertOutput("${0x100000000?c}", "4294967296");
+        // Highest value that still fits in a signed long
+        assertOutput("${0x7FFFFFFFFFFFFFFF?c}", "9223372036854775807");
+    }
+
+    @Test
+    public void testHexBeyondLongRange() throws IOException, TemplateException {
+        // Values too large for a signed long stay exact (BigInteger), rather than
+        // overflowing or failing to parse.
+        assertOutput("${0x8000000000000000?c}", "9223372036854775808");
+        assertOutput("${0xFFFFFFFFFFFFFFFF?c}", "18446744073709551615");
+        // Arbitrarily many digits: 0x1 followed by 32 zeros is 16^32.
+        assertOutput("${0x100000000000000000000000000000000?c}",
+                "340282366920938463463374607431768211456");
+    }
+
+    @Test
+    public void testHexLeadingZerosDoNotChangeValue() throws IOException, TemplateException {
+        // Leading zeros must not push a small value into a wider type.
+        assertOutput("${0x00000000000000000000FF?c}", "255");
     }
 
     @Test

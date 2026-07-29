@@ -275,7 +275,9 @@ y = 0x00FF00    // 65280
 color = 0xDEAD  // 57005
 ```
 
-Values that fit in 32 bits produce `Integer`, larger values produce `Long`.
+There is no limit on the number of digits: values that fit in a signed 32-bit integer produce
+`Integer`, values that fit in a signed 64-bit integer produce `Long`, and anything larger
+produces `BigInteger`.
 
 ### Bitwise operators (code-first only)
 
