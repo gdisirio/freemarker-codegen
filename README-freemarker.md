@@ -17,7 +17,7 @@ Apache license. You grant the same rights (copyright license, patent
 license, etc.) to the Apache Software Foundation as if you have signed
 a [Contributor License Agreement](https://www.apache.org/dev/new-committers-guide.html#cla).
 For contributions that are judged to be non-trivial, you will be asked
-to actually signing a Contributor License Agreement.
+to actually sign a Contributor License Agreement.
 
 
 What is Apache FreeMarker™?
@@ -110,7 +110,8 @@ https://freemarker.apache.org/sourcecode.html
 You need JDK 8, JDK 16, and JDK 17 (only for some tests) to be installed
 (and [visible to Gradle](https://docs.gradle.org/current/userguide/toolchains.html)).
 That's because different parts of the source code target different Java versions,
-and Gradle requires the exact JDK version (not higher) for each.
+and Gradle requires the exact JDK version (not higher) for each. (If you have trouble
+getting these specific JDK versions, see troubleshooting below!)
 
 Be sure that your default Java version (which Gradle should use automatically) is at
 least 17!
@@ -119,7 +120,6 @@ If you are building from the official source *release* (not from source that you
 got from Git), `gradle/wrapper/gradle-wrapper.jar` is missing from that, and you
 have to add it yourself! You can download it
 [from GitHub source code page](https://github.com/apache/freemarker/tree/2.3-gae/gradle/wrapper)!
-(Or, use your own Gradle installation instead of `gradlew`.)
 
 To build `freemarker.jar`, just issue `./gradlew jar` (`gradlew.bat jar` on Windows) in the
 project root directory, and it should download all dependencies automatically, and build
@@ -136,13 +136,20 @@ with `freemarker.allowUnsignedReleaseBuild=true`; see `gradle.properties` in thi
 
 Reproducible builds: If the resulting `freemarker.jar` is not identical with the official jar, see the build environment
 in the `.buildinfo` file packed into the official source distribution, and also into the Maven "sources" artifact! At
-least with identical Java versions, the resulting `freemarker.jar` meant to match exactly.
+least with identical Java versions, the resulting `freemarker.jar` is meant to match exactly.
 
 Note on trying things out with an ad-hoc class that has `main` method: Don't do that, instead write it as a JUnit test.
 FreeMarker needs to be loaded from `freemarker.jar` that contains the `META-INF/versions` directory (as per JEP 238,
 Multi-Release JAR Files). If you run a test, Gradle ensures that you have an up-to-date `freemarker.jar`, and
 that it's in the classpath. Without that, FreeMarker will behave as if you are on a lower Java version.
 
+### Troubleshooting "No matching toolchains found"
+
+Especially on MacOS / Apple Silicon / AArch64 you may have hard time finding the exact JDK version needed (like JDK 
+9 or 16), and the build will fail with `No matching toolchains found for requested specification`. But if you are not
+building for a public release, you may override those Java versions with something more commonly available, by adding
+something like `-Pfreemarker.javaVersionUsedFor.9=11 -Pfreemarker.javaVersionUsedFor.16=17` to your Gradle calls. (You 
+can also add `--info` to get diagnostic output about the toolchains actually used.)
 
 ### Maven-related build tasks
 
@@ -151,13 +158,13 @@ To see how the project would be deployed to Maven Central, issue
 and check the `build/local-deployment` directory.
  
 To publish to the Apache Maven Repository (from where you can also promote releases to the Maven Central Repository)
-issue `.\gradlew publish`. Note that for this the following Gradle properties must be properly set
+issue `./gradlew publish`. Note that for this the following Gradle properties must be properly set
 (in `gradle.properties`, or pass them via `-P<name>=<value>` arguments):
 `freemarker.signMethod`, `freemarker.deploy.apache.user`, `freemarker.deploy.apache.password`.
 
 ### FreeMarker website related build tasks
 
-The website (the FreeMarker homepage) is build by the `freemarker-site` project, not this project (`freemaker`). Except,
+The website (the FreeMarker homepage) is built by the `freemarker-site` project, not this project (`freemarker`). Except,
 the Manual and the API documentation (javadoc) is generated in this project.
 
 The online API documentation is the same as the offline one, generated with `./gradlew javadoc`. The output is uploaded
@@ -195,7 +202,7 @@ Originally done on IntelliJ IDEA Community 2023.3.2:
     prefixes (to select columns of text, hold Alt while selecting with the mouse.) Then
     go back to "Copyright" in the tree, and set "Default project copyright" to "ASL2".
 
-### Eclipse
+### Eclipse (maybe outdated)
 
 This section wasn't updated long ago. But you should import the project as any other
 Gradle project. After that, it's recommended to set these preferences (based on Eclipse Mars):

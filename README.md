@@ -931,11 +931,13 @@ endnoautoesc
 
 ## Built-in reference
 
-These built-ins are available in **both** classic and code-first modes.
+These built-ins are available in **both** classic and code-first modes. They are part of Apache
+FreeMarker as of 2.3.35 — see the FreeMarker Manual for the authoritative reference.
 
-### `?indent(prefix)`
+### `?indent(prefix)` / `?indent(prefix, rightTrim)`
 
-Prepends `prefix` to every non-empty line in the string. Blank lines are preserved without the prefix.
+Prepends `prefix` to **every** line, then removes the trailing whitespace of each resulting line
+unless `rightTrim` is `false` (it defaults to `true`).
 
 ```
 body = "int x;\nint y;\n"
@@ -945,37 +947,55 @@ emit body?indent("    ")
 //     int y;
 ```
 
+The prefix is added to blank lines too, and the trimming is what keeps that from leaving junk
+behind. With a `"# "` prefix a blank line becomes `"#"`, not `"# "` — the space in `"# "` is a
+separator, only wanted when the line has content:
+
 ```
-comment = "First line.\nSecond line."
-emit comment?indent(" * ")
+emit "First paragraph.\n\nSecond paragraph."?indent("# ")
 // Output:
-//  * First line.
-//  * Second line.
+// # First paragraph.
+// #
+// # Second paragraph.
 ```
+
+With a whitespace-only prefix this leaves blank lines empty, so the trimming is only visible with
+prefixes like the above. It also means empty lines and whitespace-only lines behave identically,
+and that accidental trailing whitespace is removed from content lines as well. A non-breaking
+space (U+00A0) is not trimmed — that is the point of a non-breaking space.
+
+An empty prefix does nothing at all, not even trimming.
 
 **Parameters:**
 
 | # | Type | Required | Description |
 |---|---|---|---|
 | 1 | string | yes | Prefix to prepend to each line |
+| 2 | boolean | no | Right-trim each resulting line (default: `true`) |
 
-### `?dedent()` / `?dedent(prefix)`
+### `?dedent` / `?dedent(prefix)` / `?dedent(prefix, rightTrim)`
 
-Removes a leading-whitespace prefix from each line. Two forms:
+Removes leading indentation. Two forms — note the no-argument form takes **no parentheses**:
 
-**No-argument form `?dedent()`** — Python `textwrap.dedent`-style. Finds the longest leading whitespace (spaces and tabs only) that is a common prefix of every non-empty line, and removes it. Robust to imperfect input. Empty/whitespace-only lines are ignored when computing the prefix and pass through unchanged.
+**No-argument form `?dedent`** — Python `textwrap.dedent`-style. Finds the longest leading
+whitespace (spaces and tabs only) that is a common prefix of every non-empty line, and removes it.
+Lines that are empty or contain whitespace only are ignored when computing the prefix, and come out
+empty.
 
 ```
-"    int x;\n  int y;\n      int z;"?dedent()
+"    int x;\n  int y;\n      int z;"?dedent
 // Output (common prefix is "  ", 2 spaces):
 //   int x;
 // int y;
 //     int z;
 ```
 
-A leading tab and a leading space are distinct characters — they have no common prefix. This matches Python's behaviour.
+A leading tab and a leading space are distinct characters — they have no common prefix. This
+matches Python's behaviour.
 
-**Explicit-prefix form `?dedent(prefix)`** — removes the given prefix from each line that starts with it; leaves other lines unchanged. Use when you want exact control.
+**Explicit-prefix form `?dedent(prefix)`** — removes from each line the longest prefix of `prefix`
+that the line actually starts with. A line carrying the whole prefix loses all of it; a line
+carrying only part of it loses that part; a line sharing nothing with it is untouched.
 
 ```
 body = "    int x;\n    int y;\n"
@@ -985,14 +1005,19 @@ emit body?dedent("    ")
 // int y;
 ```
 
-Lines without the prefix are untouched:
+Partial matches are shortened rather than ignored, which is what a code editor does when you dedent
+a block where some lines have already reached column 0:
 
 ```
 "  short\n    full\n"?dedent("    ")
 // Output:
-// "  short\n"   (only 2 spaces — no match, unchanged)
-// "full\n"      (4 spaces matched, removed)
+// "short\n"   (2 of the 4 spaces matched, both removed)
+// "full\n"    (all 4 matched, removed)
 ```
+
+Like `?indent`, this trims trailing whitespace unless the 2nd parameter is `false`; that is what
+makes a whitespace-only line come out empty rather than keeping the whitespace the prefix didn't
+cover. An empty prefix does nothing at all.
 
 Round-trip with `?indent`:
 
@@ -1004,44 +1029,14 @@ text?indent("  ")?dedent("  ")   // returns original text
 
 | # | Type | Required | Description |
 |---|---|---|---|
-| 1 | string | no | Explicit prefix to remove from each line. Omit for common-leading-whitespace mode. |
+| 1 | string | no | Prefix to remove. Omit (with no parentheses) for common-leading-whitespace mode. |
+| 2 | boolean | no | Right-trim each resulting line (default: `true`) |
 
-### `?right_pad_lines(width)` / `?right_pad_lines(width, fill)`
+### `?wrap(width)` / `?wrap(width, firstPrefix)` / `?wrap(width, firstPrefix, restPrefix)`
 
-Pads every line of a multi-line string on the right with spaces (or `fill`) up to `width`. Lines already at or past `width` are left unchanged. Empty lines are not padded. Unlike `?right_pad`, which pads the string as a whole, this pads each line independently — useful for aligning multi-line text.
-
-```
-"int x;\nString name;\n"?right_pad_lines(20)
-// "int x;              \nString name;        \n"
-```
-
-With a custom fill character:
-
-```
-"a\nbb\n"?right_pad_lines(10, '.')
-// "a.........\nbb........\n"
-```
-
-The camelCase alias `?rightPadLines` is also supported.
-
-**Parameters:**
-
-| # | Type | Required | Description |
-|---|---|---|---|
-| 1 | number | yes | Target width (in characters, not display columns — see note below) |
-| 2 | string | no | Single fill character (default: space) |
-
-> **Note on widths:** widths are counted in Java `char`s (UTF-16 code units), not visual display columns — same as `?right_pad` / `?left_pad`. A tab counts as one character, not as "advance to next tab stop." If you need visual alignment for content containing tabs, expand them to spaces first.
-
-**Use case** — aligning multi-line output for trailing comments:
-
-```
-emit code?right_pad_lines(40) // then append comments per line
-```
-
-### `?wrap(width, firstPrefix, restPrefix)`
-
-Word-wraps the string to fit within `width` columns, using `firstPrefix` for the first line and `restPrefix` for subsequent lines. If `restPrefix` is omitted, `firstPrefix` is used for all lines. Output always ends with a newline.
+Word-wraps the string to fit within `width` columns, using `firstPrefix` for the first line and
+`restPrefix` for subsequent lines. If `restPrefix` is omitted, `firstPrefix` is used for all lines;
+if both are omitted, no prefix is used. Output always ends with a newline.
 
 ```
 text = "This is a long description that should be wrapped"
@@ -1060,17 +1055,37 @@ emit "A long comment that needs to be wrapped at a reasonable width"?wrap(40, "/
 // // wrapped at a reasonable width
 ```
 
+All whitespace in the input is collapsed, including line breaks, so the input's own line structure
+does not carry through.
+
 **Parameters:**
 
 | # | Type | Required | Description |
 |---|---|---|---|
 | 1 | number | yes | Maximum line width (in characters, not display columns) |
-| 2 | string | yes | Prefix for the first line |
+| 2 | string | no | Prefix for the first line (default: none) |
 | 3 | string | no | Prefix for subsequent lines (default: same as first) |
 
-> **Note on widths and whitespace:** as with `?right_pad_lines`, widths are counted in Java `char`s, not visual columns — a tab counts as one character. Word boundaries are detected via Java's `\s+`, which does **not** include U+00A0 (non-breaking space); so a non-breaking space stays inside a word and is never used as a break point. This is the intended behaviour — that's the whole purpose of a non-breaking space.
+> **Note on widths and whitespace:** widths are counted in Java `char`s (UTF-16 code units), not
+> visual display columns — same as `?right_pad` / `?left_pad`. A tab counts as one character, not as
+> "advance to next tab stop". If you need visual alignment for content containing tabs, expand them
+> to spaces first. Word boundaries are detected via Java's `\s+`, which does **not** include U+00A0
+> (non-breaking space); a non-breaking space therefore stays inside a word and is never used as a
+> break point, even if that makes the line overflow `width`. This is intended — you cannot wrap what
+> must not be split.
 
----
+### Aligning a block of lines
+
+There is no multi-line right-pad built-in. To align a column of lines, split and loop, which keeps
+every single-line built-in available and lets you append after the padding of each line:
+
+```
+list code?lines as line
+  emit (line + " |")?right_pad(76) + "\\\n"
+endlist
+```
+
+`?lines` (also new in FreeMarker 2.3.35) splits a string into its lines.
 
 ## Complete Example
 
