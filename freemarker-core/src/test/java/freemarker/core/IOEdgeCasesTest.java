@@ -42,6 +42,7 @@ public class IOEdgeCasesTest {
     private String process(String templateContent) throws Exception {
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
         cfg.setCodeFirstMode(true);
+        cfg.setOutputTargetResolver(new FileOutputTargetResolver(tmp.getRoot()));
         Template t = new Template("test.ftl", new StringReader(templateContent), cfg);
         StringWriter sw = new StringWriter();
         t.process(new HashMap<String, Object>(), sw);
@@ -53,7 +54,7 @@ public class IOEdgeCasesTest {
         File f = new File(tmp.getRoot(), "rt.txt");
         String tmpl =
                 "assign p = \"" + f.getAbsolutePath() + "\"\n" +
-                "emit \"hello world\\n\" to p\n" +
+                "into p\n  emit \"hello world\\n\"\nend\n" +
                 "assign x = read from p\n" +
                 "emit x\n";
         // Note: emit-to writes to the file, then read pulls it back
@@ -70,9 +71,9 @@ public class IOEdgeCasesTest {
         String path2 = dir + "/./norm.txt";
         String path3 = dir + "/sub/../norm.txt";
         String tmpl =
-                "emit \"a\\n\" to \"" + path1 + "\"\n" +
-                "emit \"b\\n\" to \"" + path2 + "\"\n" +
-                "emit \"c\\n\" to \"" + path3 + "\"\n";
+                "into \"" + path1 + "\"\n  emit \"a\\n\"\nend\n" +
+                "into \"" + path2 + "\"\n  emit \"b\\n\"\nend\n" +
+                "into \"" + path3 + "\"\n  emit \"c\\n\"\nend\n";
         process(tmpl);
         // All three should write to the same file, in order
         assertEquals("a\nb\nc\n", new String(Files.readAllBytes(f.toPath())));
@@ -87,14 +88,14 @@ public class IOEdgeCasesTest {
     @Test
     public void testEmitToStderr() throws Exception {
         // Just verify it parses and runs without error; can't easily capture stderr in test
-        String tmpl = "emit \"diagnostic\\n\" to stderr\nemit \"main\" to default\n";
+        String tmpl = "into stderr\n  emit \"diagnostic\\n\"\nend\nemit \"main\"\n";
         assertEquals("main", process(tmpl));
     }
 
     @Test
     public void testEmitToStdout() throws Exception {
         // Same — verify it doesn't crash
-        String tmpl = "emit \"to_default\" to default\n";
+        String tmpl = "emit \"to_default\"\n";
         assertEquals("to_default", process(tmpl));
     }
 
@@ -106,14 +107,14 @@ public class IOEdgeCasesTest {
         String h = header.getAbsolutePath();
         String s = source.getAbsolutePath();
         String tmpl =
-                "emit \"#ifndef OUT_H\\n\" to \"" + h + "\"\n" +
-                "emit \"#define OUT_H\\n\" to \"" + h + "\"\n" +
-                "emit \"#include \\\"out.h\\\"\\n\" to \"" + s + "\"\n" +
+                "into \"" + h + "\"\n  emit \"#ifndef OUT_H\\n\"\nend\n" +
+                "into \"" + h + "\"\n  emit \"#define OUT_H\\n\"\nend\n" +
+                "into \"" + s + "\"\n  emit \"#include \\\"out.h\\\"\\n\"\nend\n" +
                 "list [\"foo\", \"bar\"] as f\n" +
-                "  emit \"void ${f}(void);\\n\" to \"" + h + "\"\n" +
-                "  emit \"void ${f}(void) {}\\n\" to \"" + s + "\"\n" +
+                "  into \"" + h + "\"\n    emit \"void ${f}(void);\\n\"\n  end\n" +
+                "  into \"" + s + "\"\n    emit \"void ${f}(void) {}\\n\"\n  end\n" +
                 "end\n" +
-                "emit \"#endif\\n\" to \"" + h + "\"\n";
+                "into \"" + h + "\"\n  emit \"#endif\\n\"\nend\n";
         process(tmpl);
         assertEquals("#ifndef OUT_H\n#define OUT_H\nvoid foo(void);\nvoid bar(void);\n#endif\n",
                 new String(Files.readAllBytes(header.toPath())));
@@ -124,7 +125,7 @@ public class IOEdgeCasesTest {
     @Test
     public void testCreatesParentDirectories() throws Exception {
         File deep = new File(tmp.getRoot(), "a/b/c/file.txt");
-        String tmpl = "emit \"hi\" to \"" + deep.getAbsolutePath() + "\"\n";
+        String tmpl = "into \"" + deep.getAbsolutePath() + "\"\n  emit \"hi\"\nend\n";
         process(tmpl);
         assertEquals("hi", new String(Files.readAllBytes(deep.toPath())));
     }
@@ -145,44 +146,41 @@ public class IOEdgeCasesTest {
     public void testEmitToWithEOLEscape() throws Exception {
         // \e in emit-to should resolve to output_eol
         File f = new File(tmp.getRoot(), "eol.txt");
-        String tmpl = "emit \"line1\\eline2\\e\" to \"" + f.getAbsolutePath() + "\"\n";
+        String tmpl = "into \"" + f.getAbsolutePath() + "\"\n  emit \"line1\\eline2\\e\"\nend\n";
         process(tmpl);
         assertEquals("line1\nline2\n", new String(Files.readAllBytes(f.toPath())));
     }
 
     @Test
-    public void testRelativePathResolvedAgainstOutputBaseDirectory() throws Exception {
+    public void testRelativeNameResolvedAgainstTheResolversBaseDirectory() throws Exception {
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
         cfg.setCodeFirstMode(true);
-        cfg.setOutputBaseDirectory(tmp.getRoot());
+        cfg.setOutputTargetResolver(new FileOutputTargetResolver(tmp.getRoot()));
 
-        Template t = new Template("test.ftl", new StringReader("emit \"hello\" to \"out.txt\"\n"), cfg);
-        StringWriter sw = new StringWriter();
-        t.process(new HashMap<String, Object>(), sw);
+        Template t = new Template("test.ftlc",
+                new StringReader("into \"out.txt\"\n  emit \"hello\"\nend\n"), cfg);
+        t.process(new HashMap<String, Object>(), new StringWriter());
 
-        // Relative path "out.txt" should resolve under tmp.getRoot()
         File expected = new File(tmp.getRoot(), "out.txt");
-        assertTrue("File should exist at output base dir / relative path", expected.exists());
+        assertTrue("File should exist under the resolver's base directory", expected.exists());
         assertEquals("hello", new String(Files.readAllBytes(expected.toPath())));
     }
 
     @Test
-    public void testAbsolutePathIgnoresOutputBaseDirectory() throws Exception {
+    public void testAbsoluteNameIgnoresTheResolversBaseDirectory() throws Exception {
         File outDir = tmp.newFolder("outdir");
         File abs = new File(tmp.getRoot(), "absolute.txt");
 
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
         cfg.setCodeFirstMode(true);
-        cfg.setOutputBaseDirectory(outDir);
+        cfg.setOutputTargetResolver(new FileOutputTargetResolver(outDir));
 
-        Template t = new Template("test.ftl",
-                new StringReader("emit \"absolute path\" to \"" + abs.getAbsolutePath() + "\"\n"), cfg);
-        StringWriter sw = new StringWriter();
-        t.process(new HashMap<String, Object>(), sw);
+        Template t = new Template("test.ftlc",
+                new StringReader("into \"" + abs.getAbsolutePath() + "\"\n  emit \"absolute path\"\nend\n"),
+                cfg);
+        t.process(new HashMap<String, Object>(), new StringWriter());
 
-        // Absolute path should write directly to that location, ignoring the base dir
         assertEquals("absolute path", new String(Files.readAllBytes(abs.toPath())));
-        // Nothing should be written under outDir
         assertFalse("nothing in outDir", new File(outDir, "absolute.txt").exists());
     }
 }

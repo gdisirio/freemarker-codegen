@@ -41,6 +41,7 @@ public class FlushTargetTest {
     private void process(String templateContent) throws Exception {
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
         cfg.setCodeFirstMode(true);
+        cfg.setOutputTargetResolver(new FileOutputTargetResolver(tmp.getRoot()));
         Template t = new Template("test.ftl", new StringReader(templateContent), cfg);
         t.process(new HashMap<String, Object>(), new StringWriter());
     }
@@ -50,6 +51,7 @@ public class FlushTargetTest {
         // Backward compatibility — no-arg flush still flushes default writer
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
         cfg.setCodeFirstMode(true);
+        cfg.setOutputTargetResolver(new FileOutputTargetResolver(tmp.getRoot()));
         Template t = new Template("test.ftl",
                 new StringReader("emit \"hello\"\nflush\n"), cfg);
         StringWriter sw = new StringWriter();
@@ -64,10 +66,10 @@ public class FlushTargetTest {
         File f = new File(tmp.getRoot(), "flushed.txt");
         String path = f.getAbsolutePath();
         String tmpl =
-                "emit \"first\\n\" to \"" + path + "\"\n" +
+                "into \"" + path + "\"\n  emit \"first\\n\"\nend\n" +
                 "flush to \"" + path + "\"\n" +
                 "assign x = read from \"" + path + "\"\n" +
-                "emit \"got: \" + x to \"" + path + "_check.txt\"\n";
+                "into \"" + path + "_check.txt\"\n  emit \"got: \" + x\nend\n";
         process(tmpl);
         // The content of the check file should reflect the flushed first line
         File checkFile = new File(path + "_check.txt");
@@ -79,13 +81,13 @@ public class FlushTargetTest {
         File f1 = new File(tmp.getRoot(), "a.txt");
         File f2 = new File(tmp.getRoot(), "b.txt");
         String tmpl =
-                "emit \"alpha\\n\" to \"" + f1.getAbsolutePath() + "\"\n" +
-                "emit \"beta\\n\" to \"" + f2.getAbsolutePath() + "\"\n" +
+                "into \"" + f1.getAbsolutePath() + "\"\n  emit \"alpha\\n\"\nend\n" +
+                "into \"" + f2.getAbsolutePath() + "\"\n  emit \"beta\\n\"\nend\n" +
                 "flush all\n" +
                 // After 'flush all', both files should have content readable from another reader
                 "assign a = read from \"" + f1.getAbsolutePath() + "\"\n" +
                 "assign b = read from \"" + f2.getAbsolutePath() + "\"\n" +
-                "emit a + b to \"" + tmp.getRoot().getAbsolutePath() + "/out.txt\"\n";
+                "into \"" + tmp.getRoot().getAbsolutePath() + "/out.txt\"\n  emit a + b\nend\n";
         process(tmpl);
         assertEquals("alpha\nbeta\n",
                 new String(Files.readAllBytes(new File(tmp.getRoot(), "out.txt").toPath())));
@@ -94,7 +96,8 @@ public class FlushTargetTest {
     @Test
     public void testFlushToStdoutAndStderr() throws Exception {
         // Just verify they parse and run; can't easily capture in test
-        process("emit \"x\" to stdout\nflush to stdout\nemit \"y\" to stderr\nflush to stderr\n");
+        process("into stdout\n  emit \"x\"\n  flush to stdout\nend\n"
+                + "into stderr\n  emit \"y\"\n  flush to stderr\nend\n");
     }
 
     @Test
@@ -114,10 +117,10 @@ public class FlushTargetTest {
         File f = new File(tmp.getRoot(), "viavar.txt");
         String tmpl =
                 "assign p = \"" + f.getAbsolutePath() + "\"\n" +
-                "emit \"hello\\n\" to p\n" +
+                "into p\n  emit \"hello\\n\"\nend\n" +
                 "flush to p\n" +
                 "assign x = read from p\n" +
-                "emit x to \"" + tmp.getRoot().getAbsolutePath() + "/result.txt\"\n";
+                "into \"" + tmp.getRoot().getAbsolutePath() + "/result.txt\"\n  emit x\nend\n";
         process(tmpl);
         assertEquals("hello\n",
                 new String(Files.readAllBytes(new File(tmp.getRoot(), "result.txt").toPath())));

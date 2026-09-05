@@ -511,7 +511,7 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     private int namingConvention = AUTO_DETECT_NAMING_CONVENTION;
     private int tabSize = 8;  // Default from JavaCC 3.x
     private boolean codeFirstMode;
-    private java.io.File outputBaseDirectory;
+    private OutputTargetResolver outputTargetResolver;
     private boolean fallbackOnNullLoopVariable = true;  // Default for backward compatibility
     private boolean preventStrippings;
 
@@ -2768,24 +2768,25 @@ public class Configuration extends Configurable implements Cloneable, ParserConf
     }
 
     /**
-     * Sets the base directory used to resolve relative output paths in
-     * {@code emit ... to "<path>"} directives. Absolute paths are unaffected.
-     * If {@code null} (the default), relative paths are resolved against the
-     * current working directory.
+     * Sets what the target names of the code-first {@code into} directive mean, or {@code null} (the default) for
+     * nothing beyond {@code stdout} and {@code stderr}, in which case naming any other target is an error.
+     *
+     * <p>There's no default because what a name refers to, and where a relative path would be resolved against, are
+     * decisions for the application, not for FreeMarker. See {@link OutputTargetResolver}.
      *
      * @since 2.3.35
      */
-    public void setOutputBaseDirectory(java.io.File outputBaseDirectory) {
-        this.outputBaseDirectory = outputBaseDirectory;
+    public void setOutputTargetResolver(OutputTargetResolver outputTargetResolver) {
+        this.outputTargetResolver = outputTargetResolver;
     }
 
     /**
-     * The getter pair of {@link #setOutputBaseDirectory(java.io.File)}.
+     * The getter pair of {@link #setOutputTargetResolver(OutputTargetResolver)}.
      *
      * @since 2.3.35
      */
-    public java.io.File getOutputBaseDirectory() {
-        return outputBaseDirectory;
+    public OutputTargetResolver getOutputTargetResolver() {
+        return outputTargetResolver;
     }
 
     /**

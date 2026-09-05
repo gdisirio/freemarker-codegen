@@ -64,8 +64,7 @@ final class FlushInstruction extends TemplateElement {
             env.getOut().flush();
         } else {
             String t = evalTarget(env);
-            Writer w = env.getWriterForTarget(t);
-            w.flush();
+            env.getOutputTarget(t, target).getWriter().flush();
         }
         return null;
     }

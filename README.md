@@ -680,36 +680,73 @@ include "header.ftl"
 
 Code-first mode supports writing to multiple output targets and reading from files or stdin in a single template. This enables generating multiple files (e.g., `.h` and `.c` together), emitting diagnostics to stderr, and reading data fixtures inline.
 
-### Writing: `emit ... to <target>`
+### Writing: the `into` block
 
-The `to <target>` clause routes the output to a specific destination:
+Everything emitted inside an `into` block goes to the named target instead of to the main
+output:
 
 ```
-emit "main output"                          // implicit "to default" (legacy)
-emit "diagnostic\n" to stderr               // standard error
-emit "tabular line\n" to stdout             // standard out
-emit "header content\n" to "build/out.h"    // file path
-emit "..." to header_path                   // string variable holding a path
+emit "this goes to the main output\n"
+
+into stderr
+  emit "a diagnostic\n"
+end
+
+into "build/out.h"
+  emit "#ifndef OUT_H\n"
+end
 ```
 
-**Reserved target names:**
+The target is an expression, so it can be computed:
 
-| Target | Destination |
-|---|---|
-| `default` | The main template output (the `Writer` passed to `process()`) |
-| `stdout` | `System.out` |
-| `stderr` | `System.err` |
+```
+assign header = "include/${name}.h"
+into header
+  emit "..."
+end
+```
 
-Any other expression evaluates to a string treated as a **file path**.
+**Naming a target again appends to it**, so a template can move back and forth between the
+files it is generating — see the example below. And **output emitted outside every block goes
+to the main output**, which means a template that puts *all* of its output into blocks writes
+nothing to the main output at all.
 
-### Output file semantics
+### Targets
 
-- **Lazy open**: the file is opened on the first `emit ... to <path>` for that path
-- **Truncate mode**: the file is overwritten — existing content is discarded
-- **Cached handle**: subsequent `emit`s to the same path reuse the open handle, preserving order
-- **Path normalization**: paths are normalized via `toAbsolutePath().normalize()`, so `"out.txt"`, `"./out.txt"`, and `"sub/../out.txt"` all map to the same handle
-- **Auto parent dirs**: missing parent directories are created automatically
-- **Auto close**: all open handles are flushed and closed when template processing ends
+`stdout` and `stderr` always work: they exist regardless of configuration and involve no
+decision about what a name means.
+
+Every other name is passed to an **output target resolver**, and is an error if none is
+configured. That is deliberate — whether a name is a file, and what a relative one is resolved
+against, is the application's decision, not FreeMarker's:
+
+```java
+// Names are file paths, resolved against build/generated:
+cfg.setOutputTargetResolver(new FileOutputTargetResolver(new File("build/generated")));
+```
+
+`FileOutputTargetResolver` is provided for the common case: it creates missing parent
+directories, truncates an existing file, closes it when processing ends, and treats names that
+differ only in spelling (`"a.txt"`, `"./a.txt"`, `"sub/../a.txt"`) as the same file. Implement
+`OutputTargetResolver` yourself for anything else — an archive entry, a database row, an
+in-memory buffer.
+
+### `discard`
+
+`discard` says that the enclosing block's output is not to be kept:
+
+```
+into "maybe.h"
+  emit generateHeader()
+  if !needed
+    discard
+  end
+end
+```
+
+What discarding *means* is the target's business: `FileOutputTargetResolver` deletes the file.
+Nothing is buffered in order to make this possible, which is why `stdout` and `stderr` refuse
+to be discarded — what was written to them has already gone.
 
 ### Multi-file generation example
 
@@ -717,18 +754,35 @@ Any other expression evaluates to a string treated as a **file path**.
 assign header = "include/${name}.h"
 assign source = "src/${name}.c"
 
-emit "#ifndef ${name?upper_case}_H\n" to header
-emit "#define ${name?upper_case}_H\n" to header
-emit "#include \"${name}.h\"\n" to source
+into header
+  emit "#ifndef ${name?upper_case}_H\n"
+  emit "#define ${name?upper_case}_H\n"
+end
+into source
+  emit "#include \"${name}.h\"\n"
+end
 
 list functions as f
-  emit f.prototype + ";\n" to header        // declaration in .h
-  emit f.body to source                      // implementation in .c
+  into header
+    emit f.prototype + ";\n"        // declaration in .h
+  end
+  into source
+    emit f.body                      // implementation in .c
+  end
 end
-emit "#endif\n" to header
+
+into header
+  emit "#endif\n"
+end
 ```
 
-The `.h` and `.c` files are generated in a single pass, with related code emitted adjacent in the template — making cross-file consistency easy to maintain.
+The `.h` and `.c` files are generated in a single pass, with related code adjacent in the
+template — which is what makes cross-file consistency easy to maintain.
+
+> **Changed:** the per-statement `emit <expr> to <target>` form has been replaced by the `into`
+> block. Having both would have been two ways to say one thing, and the block additionally
+> gives a place for `discard` to apply to. `setOutputBaseDirectory` is gone as well; where a
+> relative name resolves to is now the resolver's business.
 
 ### Reading: `read from` and `readln from`
 
@@ -807,7 +861,7 @@ Unlike output handles (which are cached for write coalescing), input handles are
 
 ### Reading a freshly-written file
 
-If you write to a file with `emit ... to <path>` and read it back with `read from <path>` or `readln from <path>` later in the same template, the runtime flushes the open writer before opening the reader. The newly-written content is visible.
+If you write to a target with an `into` block and read it back with `read from <path>` or `readln from <path>` later in the same template, the runtime flushes that target before opening the reader, so the newly-written content is visible.
 
 ### Stdin termination
 
@@ -824,13 +878,15 @@ Stdin is single-pass and not seekable. A second `readln from stdin` after the fi
 
 ### Configuration knobs
 
-- **Output base directory**: relative paths in `emit ... to "<path>"` are resolved against the configured output base directory. If unset (default), they're resolved against the JVM's current working directory.
+- **Output targets**: set an `OutputTargetResolver` to say what target names other than `stdout`
+  and `stderr` mean; there is none by default. `FileOutputTargetResolver` treats them as file
+  paths, resolving relative ones against a base directory:
   ```java
-  cfg.setOutputBaseDirectory(new File("build/generated"));
+  cfg.setOutputTargetResolver(new FileOutputTargetResolver(new File("build/generated")));
   ```
-  Absolute paths are unaffected.
-- All output flows through the same `output_eol` and `\e` resolution as the main `emit` (see below)
-- Writes use UTF-8 encoding by default
+  Absolute names are unaffected by the base directory. Writes use UTF-8 unless the resolver is
+  given another charset.
+- All output flows through the same `output_eol` and `\e` resolution as the main output (see below)
 
 ---
 
@@ -1209,7 +1265,7 @@ emit "}\n"
 | `0xFF` (not supported) | `0xFF` (both modes) |
 | (not available) | `&`, `\|`, `^`, `~`, `<<`, `>>` (bitwise) |
 | (not available) | `&=`, `\|=`, `^=`, `<<=`, `>>=` (bitwise assign) |
-| (not available) | `emit expr to <target>` (multi-target output) |
+| (not available) | `into <target>`...`end` (multi-target output), `discard` |
 | (not available) | `read from <target>` (eager file read) |
 | (not available) | `readln from <target>` (lazy line iteration) |
 | `@function x` (no equivalent) | `x?func(args)` (method-style call → `func(x, args)`) |

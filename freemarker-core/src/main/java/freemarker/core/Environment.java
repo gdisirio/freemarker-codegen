@@ -41,6 +41,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -204,7 +205,6 @@ public final class Environment extends Configurable {
      * Lazily opened in truncate mode on first {@code emit ... to "path"} for that path.
      * Closed when the Environment finishes processing.
      */
-    private Map<String, Writer> auxiliaryWriters;
 
     /**
      * Code-first auxiliary input readers awaiting close. Each {@code readln from "path"} or
@@ -1469,39 +1469,106 @@ public final class Environment extends Configurable {
     static final String TARGET_STDIN = "stdin";
 
     /**
-     * Resolves a target name to a Writer. Reserved names: "default", "stdout", "stderr".
-     * Any other value is treated as a file path; the file is opened on first request
-     * (in truncate mode) and the handle is cached for subsequent writes.
+     * The targets opened so far by {@code into} blocks, by the name used in the template. A target is opened at most
+     * once per execution, so that a template can come back to one it wrote to earlier and append to it.
+     */
+    private Map<String, OutputTarget> outputTargets;
+
+    /** The targets that a {@code discard} abandoned; by identity, as one target can have several names. */
+    private Set<OutputTarget> discardedOutputTargets;
+
+    /** The target of the innermost enclosing {@code into} block, or {@code null} outside every such block. */
+    private OutputTarget currentIntoTarget;
+
+    OutputTarget getCurrentIntoTarget() {
+        return currentIntoTarget;
+    }
+
+    void setCurrentIntoTarget(OutputTarget target) {
+        this.currentIntoTarget = target;
+    }
+
+    /**
+     * Returns the target of the given name, opening it if this is the first {@code into} block naming it.
+     *
+     * <p>{@code stdout} and {@code stderr} are handled here, as they always exist and involve no decision. Anything
+     * else is passed to the {@link OutputTargetResolver} of the {@link Configuration}, and is an error if there isn't
+     * one; see {@link Configuration#setOutputTargetResolver(OutputTargetResolver)}.
      *
      * @since 2.3.35
      */
-    Writer getWriterForTarget(String target) throws IOException {
-        if (target == null || TARGET_DEFAULT.equals(target)) {
-            return out;
+    OutputTarget getOutputTarget(String name, Expression blame) throws TemplateException, IOException {
+        if (outputTargets == null) {
+            outputTargets = new LinkedHashMap<String, OutputTarget>();
         }
-        if (TARGET_STDOUT.equals(target)) {
-            return new OutputStreamWriter(System.out);
+        OutputTarget target = outputTargets.get(name);
+        if (target != null) {
+            return target;
         }
-        if (TARGET_STDERR.equals(target)) {
-            return new OutputStreamWriter(System.err);
-        }
-        // Treat as a file path
-        String key = normalizePath(target);
-        if (auxiliaryWriters == null) {
-            auxiliaryWriters = new HashMap<String, Writer>();
-        }
-        Writer w = auxiliaryWriters.get(key);
-        if (w == null) {
-            // Ensure parent directories exist
-            Path p = Paths.get(key);
-            Path parent = p.getParent();
-            if (parent != null) {
-                java.nio.file.Files.createDirectories(parent);
+
+        if (TARGET_STDOUT.equals(name)) {
+            target = new StandardStreamOutputTarget(System.out, name);
+        } else if (TARGET_STDERR.equals(name)) {
+            target = new StandardStreamOutputTarget(System.err, name);
+        } else {
+            OutputTargetResolver resolver = getConfiguration().getOutputTargetResolver();
+            if (resolver == null) {
+                throw new _MiscTemplateException(blame, this,
+                        "There's no output target called ", new _DelayedJQuote(name),
+                        ". Only \"stdout\" and \"stderr\" exist unless the "
+                        + "\"output_target_resolver\" setting of the Configuration is set to say what other "
+                        + "names mean.");
             }
-            w = new BufferedWriter(new FileWriter(key));
-            auxiliaryWriters.put(key, w);
+            target = resolver.open(name, this);
+            if (target == null) {
+                throw new _MiscTemplateException(blame, this,
+                        "The output target resolver returned no target for ", new _DelayedJQuote(name), ".");
+            }
         }
-        return w;
+        outputTargets.put(name, target);
+        return target;
+    }
+
+    /**
+     * Marks the target as abandoned, so that it's discarded rather than committed when the execution ends.
+     *
+     * @since 2.3.35
+     */
+    void discardOutputTarget(OutputTarget target) {
+        if (discardedOutputTargets == null) {
+            discardedOutputTargets = Collections.newSetFromMap(new IdentityHashMap<OutputTarget, Boolean>());
+        }
+        discardedOutputTargets.add(target);
+    }
+
+    /**
+     * An {@link OutputTarget} for {@code stdout}/{@code stderr}. The underlying stream isn't ours to close, so
+     * committing only flushes, and discarding isn't possible, as what was written has already gone.
+     */
+    private static final class StandardStreamOutputTarget implements OutputTarget {
+        private final Writer writer;
+        private final String name;
+
+        StandardStreamOutputTarget(java.io.OutputStream out, String name) {
+            this.writer = new OutputStreamWriter(out);
+            this.name = name;
+        }
+
+        @Override
+        public Writer getWriter() {
+            return writer;
+        }
+
+        @Override
+        public void commit() throws IOException {
+            writer.flush();
+        }
+
+        @Override
+        public void discard() throws IOException {
+            throw new IOException("Can't discard what was written to \"" + name
+                    + "\", as it has already gone to the standard stream.");
+        }
     }
 
     /**
@@ -1521,12 +1588,11 @@ public final class Environment extends Configurable {
             reader = new BufferedReader(new InputStreamReader(System.in));
         } else {
             String key = normalizePath(target);
-            // If a writer is currently open for the same path, flush it so the
-            // reader sees up-to-date content.
-            if (auxiliaryWriters != null) {
-                Writer w = auxiliaryWriters.get(key);
-                if (w != null) {
-                    w.flush();
+            // If an output target of the same name is open, flush it so the reader sees what was written.
+            if (outputTargets != null) {
+                OutputTarget openTarget = outputTargets.get(target);
+                if (openTarget != null) {
+                    openTarget.getWriter().flush();
                 }
             }
             reader = new BufferedReader(new FileReader(key));
@@ -1546,9 +1612,9 @@ public final class Environment extends Configurable {
      */
     void flushAllWriters() throws IOException {
         out.flush();
-        if (auxiliaryWriters != null) {
-            for (Writer w : auxiliaryWriters.values()) {
-                w.flush();
+        if (outputTargets != null) {
+            for (OutputTarget target : outputTargets.values()) {
+                target.getWriter().flush();
             }
         }
     }
@@ -1566,20 +1632,11 @@ public final class Environment extends Configurable {
     }
 
     /**
-     * Normalizes a path string to its canonical form for use as a map key.
-     * Relative paths are resolved against the configured output base directory
-     * (if set), or against the current working directory otherwise.
-     * Resolves "." and ".." but does not resolve symlinks.
+     * Normalizes a path used by {@code read from} / {@code readln from} to its canonical form. Relative paths are
+     * resolved against the current working directory. Resolves "." and ".." but does not resolve symlinks.
      */
     private String normalizePath(String path) {
-        Path p = Paths.get(path);
-        if (!p.isAbsolute()) {
-            java.io.File baseDir = getConfiguration().getOutputBaseDirectory();
-            if (baseDir != null) {
-                p = baseDir.toPath().resolve(p);
-            }
-        }
-        return p.toAbsolutePath().normalize().toString();
+        return Paths.get(path).toAbsolutePath().normalize().toString();
     }
 
     /**
@@ -1587,16 +1644,27 @@ public final class Environment extends Configurable {
      * Errors during close are logged but not propagated, to ensure all handles get closed.
      */
     private void closeAuxiliaryStreams() {
-        if (auxiliaryWriters != null) {
-            for (Map.Entry<String, Writer> entry : auxiliaryWriters.entrySet()) {
+        if (outputTargets != null) {
+            Set<OutputTarget> done = Collections.newSetFromMap(new IdentityHashMap<OutputTarget, Boolean>());
+            for (Map.Entry<String, OutputTarget> entry : outputTargets.entrySet()) {
+                OutputTarget target = entry.getValue();
+                if (!done.add(target)) {
+                    continue; // Reached by more than one name; it's one target, so commit it once.
+                }
+                boolean discarded = discardedOutputTargets != null && discardedOutputTargets.contains(target);
                 try {
-                    entry.getValue().flush();
-                    entry.getValue().close();
+                    if (discarded) {
+                        target.discard();
+                    } else {
+                        target.commit();
+                    }
                 } catch (IOException e) {
-                    LOG.warn("Failed to close auxiliary writer for: " + entry.getKey(), e);
+                    LOG.warn("Failed to " + (discarded ? "discard" : "commit") + " output target: "
+                            + entry.getKey(), e);
                 }
             }
-            auxiliaryWriters = null;
+            outputTargets = null;
+            discardedOutputTargets = null;
         }
         if (auxiliaryReaders != null) {
             for (Closeable reader : auxiliaryReaders) {

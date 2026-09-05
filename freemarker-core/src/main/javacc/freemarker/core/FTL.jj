@@ -442,7 +442,7 @@ public class FMParser {
         if (t.kind == CF_END_IF || t.kind == CF_END_LIST || t.kind == CF_END_MACRO
                 || t.kind == CF_END_FUNCTION || t.kind == CF_END_SWITCH || t.kind == CF_END_SEP
                 || t.kind == CF_END_ATTEMPT || t.kind == CF_END_ITEMS
-                || t.kind == CF_END_AUTOESC || t.kind == CF_END_NOAUTOESC
+                || t.kind == CF_END_AUTOESC || t.kind == CF_END_NOAUTOESC || t.kind == CF_END_INTO
                 || t.kind == EOF) {
             return true;
         }
@@ -1801,6 +1801,8 @@ TOKEN:
     <CF_END_AUTOESC : "/autoesc">
     |
     <CF_END_NOAUTOESC : "/noautoesc">
+    |
+    <CF_END_INTO : "/into">
     |
     // Greater-than operators (unambiguous in code-first mode, no tag-close conflict)
     <CF_NATURAL_GT : ">">
@@ -5348,6 +5350,12 @@ TemplateElements CodeFirstContent() :
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("emit")})
             elem = CodeFirstEmit()
             |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("into")})
+            elem = CodeFirstInto()
+            |
+            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("discard")})
+            elem = CodeFirstDiscard()
+            |
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("stop")})
             elem = CodeFirstStop()
             |
@@ -5892,12 +5900,52 @@ HashMap CodeFirstNamedArgs() :
  * Outputs the value of an expression (typically a string literal with interpolations).
  * Example: emit "Hello, ${name}!"
  */
+/**
+ * Code-first into block: into <target> ... end
+ * Everything emitted inside goes to the named target instead of to the main output.
+ */
+TemplateElement CodeFirstInto() :
+{
+    Token start, end;
+    Expression target;
+    TemplateElements children;
+}
+{
+    start = <ID> // "into" - verified by semantic LOOKAHEAD
+    target = CodeFirstTarget()
+    <CF_EOL>
+    children = CodeFirstContent()
+    ( end = <CF_END_INTO> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
+    [ <CF_EOL> ]
+    {
+        IntoDirective result = new IntoDirective(target, children);
+        result.setLocation(template, start, end);
+        return result;
+    }
+}
+
+/**
+ * Code-first discard statement: says that the output of the enclosing into block isn't to be kept.
+ */
+TemplateElement CodeFirstDiscard() :
+{
+    Token start;
+}
+{
+    start = <ID> // "discard" - verified by semantic LOOKAHEAD
+    <CF_EOL>
+    {
+        DiscardInstruction result = new DiscardInstruction();
+        result.setLocation(template, start, start);
+        return result;
+    }
+}
+
 TemplateElement CodeFirstEmit() :
 {
     Token start;
     Token textBlock;
     Expression exp;
-    Expression target = null;
 }
 {
     start = <ID> // "emit"
@@ -5921,47 +5969,25 @@ TemplateElement CodeFirstEmit() :
             sl.parseValue(this, outputFormat);
             exp = sl;
         }
-        [
-            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("to")})
-            <ID>  // "to"
-            target = CodeFirstTarget()
-        ]
         <CF_EOL>
         {
-            if (target != null) {
-                EmitToDirective result = new EmitToDirective(escapedExpression(exp), target);
-                result.setLocation(template, start, textBlock);
-                return result;
-            } else {
-                DollarVariable result = new DollarVariable(
-                        exp, escapedExpression(exp),
-                        outputFormat,
-                        autoEscaping);
-                result.setLocation(template, start, textBlock);
-                return result;
-            }
+            DollarVariable result = new DollarVariable(
+                    exp, escapedExpression(exp),
+                    outputFormat,
+                    autoEscaping);
+            result.setLocation(template, start, textBlock);
+            return result;
         }
         |
         exp = Expression()
-        [
-            LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("to")})
-            <ID>  // "to"
-            target = CodeFirstTarget()
-        ]
         <CF_EOL>
         {
-            if (target != null) {
-                EmitToDirective result = new EmitToDirective(escapedExpression(exp), target);
-                result.setLocation(template, start, start);
-                return result;
-            } else {
-                DollarVariable result = new DollarVariable(
-                        exp, escapedExpression(exp),
-                        outputFormat,
-                        autoEscaping);
-                result.setLocation(template, start, start);
-                return result;
-            }
+            DollarVariable result = new DollarVariable(
+                    exp, escapedExpression(exp),
+                    outputFormat,
+                    autoEscaping);
+            result.setLocation(template, start, start);
+            return result;
         }
     )
 }
