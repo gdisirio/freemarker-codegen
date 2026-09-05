@@ -66,7 +66,7 @@ public class FlushTargetTest {
         String tmpl =
                 "emit \"first\\n\" to \"" + path + "\"\n" +
                 "flush to \"" + path + "\"\n" +
-                "x = read from \"" + path + "\"\n" +
+                "assign x = read from \"" + path + "\"\n" +
                 "emit \"got: \" + x to \"" + path + "_check.txt\"\n";
         process(tmpl);
         // The content of the check file should reflect the flushed first line
@@ -83,8 +83,8 @@ public class FlushTargetTest {
                 "emit \"beta\\n\" to \"" + f2.getAbsolutePath() + "\"\n" +
                 "flush all\n" +
                 // After 'flush all', both files should have content readable from another reader
-                "a = read from \"" + f1.getAbsolutePath() + "\"\n" +
-                "b = read from \"" + f2.getAbsolutePath() + "\"\n" +
+                "assign a = read from \"" + f1.getAbsolutePath() + "\"\n" +
+                "assign b = read from \"" + f2.getAbsolutePath() + "\"\n" +
                 "emit a + b to \"" + tmp.getRoot().getAbsolutePath() + "/out.txt\"\n";
         process(tmpl);
         assertEquals("alpha\nbeta\n",
@@ -113,10 +113,10 @@ public class FlushTargetTest {
     public void testFlushToVariableTarget() throws Exception {
         File f = new File(tmp.getRoot(), "viavar.txt");
         String tmpl =
-                "p = \"" + f.getAbsolutePath() + "\"\n" +
+                "assign p = \"" + f.getAbsolutePath() + "\"\n" +
                 "emit \"hello\\n\" to p\n" +
                 "flush to p\n" +
-                "x = read from p\n" +
+                "assign x = read from p\n" +
                 "emit x to \"" + tmp.getRoot().getAbsolutePath() + "/result.txt\"\n";
         process(tmpl);
         assertEquals("hello\n",

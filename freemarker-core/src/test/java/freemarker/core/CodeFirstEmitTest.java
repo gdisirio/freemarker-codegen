@@ -62,7 +62,7 @@ public class CodeFirstEmitTest {
 
     @Test
     public void testEmitNumber() throws Exception {
-        assertEquals("42", processCodeFirst("x = 42\nemit x?c\n"));
+        assertEquals("42", processCodeFirst("assign x = 42\nemit x?c\n"));
     }
 
     @Test

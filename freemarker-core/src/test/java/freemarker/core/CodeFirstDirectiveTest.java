@@ -116,7 +116,7 @@ public class CodeFirstDirectiveTest {
 
     @Test
     public void testSimpleAssignment() throws Exception {
-        assertEquals("", processCodeFirst("x = 1\n"));
+        assertEquals("", processCodeFirst("assign x = 1\n"));
     }
 
     @Test
@@ -141,19 +141,19 @@ public class CodeFirstDirectiveTest {
 
     @Test
     public void testPlusEqualsAssignment() throws Exception {
-        assertEquals("", processCodeFirst("x = 1\nx += 2\n"));
+        assertEquals("", processCodeFirst("assign x = 1\nassign x += 2\n"));
     }
 
     @Test
     public void testPlusPlusAssignment() throws Exception {
-        assertEquals("", processCodeFirst("x = 1\nx++\n"));
+        assertEquals("", processCodeFirst("assign x = 1\nassign x++\n"));
     }
 
     // === SWITCH tests ===
 
     @Test
     public void testSwitch() throws Exception {
-        assertEquals("", processCodeFirst("x = 1\nswitch x\ncase 1\ncase 2\ndefault\n/switch\n"));
+        assertEquals("", processCodeFirst("assign x = 1\nswitch x\ncase 1\ncase 2\ndefault\n/switch\n"));
     }
 
     // === IMPORT tests ===
@@ -203,36 +203,36 @@ public class CodeFirstDirectiveTest {
 
     @Test
     public void testEndifAlias() throws Exception {
-        assertEquals("", processCodeFirst("if true\nendif\n"));
+        assertEquals("", processCodeFirst("if true\nend\n"));
     }
 
     @Test
     public void testEndlistAlias() throws Exception {
         Map<String, Object> model = new HashMap<>();
         model.put("items", Arrays.asList("a"));
-        assertEquals("", processCodeFirst("list items as item\nendlist\n", model));
+        assertEquals("", processCodeFirst("list items as item\nend\n", model));
     }
 
     @Test
     public void testEndmacroAlias() throws Exception {
-        assertEquals("", processCodeFirst("macro greet(name)\nendmacro\n"));
+        assertEquals("", processCodeFirst("macro greet(name)\nend\n"));
     }
 
     @Test
     public void testEndfunctionAlias() throws Exception {
-        assertEquals("", processCodeFirst("function add(a, b)\nendfunction\n"));
+        assertEquals("", processCodeFirst("function add(a, b)\nend\n"));
     }
 
     @Test
     public void testEndswitchAlias() throws Exception {
-        assertEquals("", processCodeFirst("x = 1\nswitch x\ncase 1\nendswitch\n"));
+        assertEquals("", processCodeFirst("assign x = 1\nswitch x\ncase 1\nend\n"));
     }
 
     @Test
     public void testMixedClosingStyles() throws Exception {
         // /if and endif can be used interchangeably
         assertEquals("", processCodeFirst(
-                "if true\nif true\nendif\n/if\n"));
+                "if true\nif true\nend\n/if\n"));
     }
 
     // === Multiline expressions ===
@@ -243,7 +243,7 @@ public class CodeFirstDirectiveTest {
         model.put("x", 15);
         model.put("y", 5);
         assertEquals("", processCodeFirst(
-                "if (x > 10 &&\n    y < 20)\nendif\n", model));
+                "if (x > 10 &&\n    y < 20)\nend\n", model));
     }
 
     @Test
@@ -253,7 +253,7 @@ public class CodeFirstDirectiveTest {
         model.put("b", true);
         model.put("c", true);
         assertEquals("", processCodeFirst(
-                "if (a &&\n    b &&\n    c)\nendif\n", model));
+                "if (a &&\n    b &&\n    c)\nend\n", model));
     }
 
     // === Greater-than operators without parens ===
@@ -262,21 +262,21 @@ public class CodeFirstDirectiveTest {
     public void testGreaterThanWithoutParens() throws Exception {
         Map<String, Object> model = new HashMap<>();
         model.put("x", 15);
-        assertEquals("", processCodeFirst("if x > 10\nendif\n", model));
+        assertEquals("", processCodeFirst("if x > 10\nend\n", model));
     }
 
     @Test
     public void testGreaterThanEqualsWithoutParens() throws Exception {
         Map<String, Object> model = new HashMap<>();
         model.put("x", 10);
-        assertEquals("", processCodeFirst("if x >= 10\nendif\n", model));
+        assertEquals("", processCodeFirst("if x >= 10\nend\n", model));
     }
 
     @Test
     public void testBackslashLineContinuation() throws Exception {
         // Assignment with line continuation
         assertEquals("hello world",
-                processCodeFirst("x = \"hello\" + \\\n\" world\"\nemit x\n"));
+                processCodeFirst("assign x = \"hello\" + \\\n\" world\"\nemit x\n"));
     }
 
     @Test
@@ -285,13 +285,13 @@ public class CodeFirstDirectiveTest {
         model.put("a", true);
         model.put("b", true);
         assertEquals("yes",
-                processCodeFirst("if a && \\\nb\n  emit \"yes\"\nendif\n", model));
+                processCodeFirst("if a && \\\nb\n  emit \"yes\"\nend\n", model));
     }
 
     @Test
     public void testBackslashLineContinuationMultiple() throws Exception {
         // Multiple continuations
         assertEquals("6",
-                processCodeFirst("x = 1 + \\\n2 + \\\n3\nemit x?c\n"));
+                processCodeFirst("assign x = 1 + \\\n2 + \\\n3\nemit x?c\n"));
     }
 }

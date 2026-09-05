@@ -83,8 +83,8 @@ public class TextBlockErrorLocationTest {
     public void testTextBlockWithMultipleInterpolations() throws Exception {
         // Multiple interpolations across multiple lines all work.
         String tmpl =
-                "a = \"X\"\n" +
-                "b = \"Y\"\n" +
+                "assign a = \"X\"\n" +
+                "assign b = \"Y\"\n" +
                 "emit \"\"\"\n" +
                 "first ${a}\n" +
                 "second ${b}\n" +

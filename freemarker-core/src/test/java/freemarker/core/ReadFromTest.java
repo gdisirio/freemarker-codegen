@@ -51,7 +51,7 @@ public class ReadFromTest {
     public void testReadFile() throws Exception {
         File inputFile = tmp.newFile("input.txt");
         Files.write(inputFile.toPath(), "hello world".getBytes());
-        String tmpl = "x = read from \"" + inputFile.getAbsolutePath() + "\"\nemit x\n";
+        String tmpl = "assign x = read from \"" + inputFile.getAbsolutePath() + "\"\nemit x\n";
         assertEquals("hello world", processCodeFirst(tmpl));
     }
 
@@ -59,14 +59,14 @@ public class ReadFromTest {
     public void testReadFileMultiline() throws Exception {
         File inputFile = tmp.newFile("ml.txt");
         Files.write(inputFile.toPath(), "line1\nline2\nline3".getBytes());
-        String tmpl = "x = read from \"" + inputFile.getAbsolutePath() + "\"\nemit x\n";
+        String tmpl = "assign x = read from \"" + inputFile.getAbsolutePath() + "\"\nemit x\n";
         assertEquals("line1\nline2\nline3", processCodeFirst(tmpl));
     }
 
     @Test
     public void testReadEmptyFile() throws Exception {
         File inputFile = tmp.newFile("empty.txt");
-        String tmpl = "x = read from \"" + inputFile.getAbsolutePath() + "\"\nemit \"<\" + x + \">\"\n";
+        String tmpl = "assign x = read from \"" + inputFile.getAbsolutePath() + "\"\nemit \"<\" + x + \">\"\n";
         assertEquals("<>", processCodeFirst(tmpl));
     }
 
@@ -77,7 +77,7 @@ public class ReadFromTest {
         String tmpl =
                 "list (readln from \"" + inputFile.getAbsolutePath() + "\") as line\n" +
                 "  emit line + \"!\\n\"\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("a!\nb!\nc!\n", processCodeFirst(tmpl));
     }
 
@@ -87,7 +87,7 @@ public class ReadFromTest {
         String tmpl =
                 "list (readln from \"" + inputFile.getAbsolutePath() + "\") as line\n" +
                 "  emit \"X\"\n" +
-                "endlist\n" +
+                "end\n" +
                 "emit \"done\"\n";
         assertEquals("done", processCodeFirst(tmpl));
     }
@@ -99,7 +99,7 @@ public class ReadFromTest {
         String tmpl =
                 "list (readln from \"" + inputFile.getAbsolutePath() + "\") as line\n" +
                 "  emit \"[\" + line + \"]\"\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("[a][b]", processCodeFirst(tmpl));
     }
 
@@ -108,10 +108,10 @@ public class ReadFromTest {
         File inputFile = tmp.newFile("data.csv");
         Files.write(inputFile.toPath(), "x\ny\n".getBytes());
         String tmpl =
-                "lines = readln from \"" + inputFile.getAbsolutePath() + "\"\n" +
+                "assign lines = readln from \"" + inputFile.getAbsolutePath() + "\"\n" +
                 "list lines as l\n" +
                 "  emit l\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("xy", processCodeFirst(tmpl));
     }
 
@@ -123,10 +123,10 @@ public class ReadFromTest {
         String tmpl =
                 "list (readln from \"" + path + "\") as l\n" +
                 "  emit \"a:\" + l + \"\\n\"\n" +
-                "endlist\n" +
+                "end\n" +
                 "list (readln from \"" + path + "\") as l\n" +
                 "  emit \"b:\" + l + \"\\n\"\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("a:1\na:2\na:3\nb:1\nb:2\nb:3\n", processCodeFirst(tmpl));
     }
 
@@ -138,9 +138,9 @@ public class ReadFromTest {
                 "list (readln from \"" + inputFile.getAbsolutePath() + "\") as l\n" +
                 "  if l == \"3\"\n" +
                 "    break\n" +
-                "  endif\n" +
+                "  end\n" +
                 "  emit l\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("12", processCodeFirst(tmpl));
     }
 
@@ -149,7 +149,7 @@ public class ReadFromTest {
         File inputFile = tmp.newFile("via_var.txt");
         Files.write(inputFile.toPath(), "content".getBytes());
         String tmpl =
-                "p = \"" + inputFile.getAbsolutePath() + "\"\n" +
+                "assign p = \"" + inputFile.getAbsolutePath() + "\"\n" +
                 "emit read from p\n";
         assertEquals("content", processCodeFirst(tmpl));
     }

@@ -92,7 +92,7 @@ public class OutputEolTest {
     @Test
     public void testBackslashEWithInterpolation() throws Exception {
         assertEquals("hello\nworld\n",
-                processCodeFirst("x = \"world\"\nemit \"hello\\e${x}\\e\"\n", null));
+                processCodeFirst("assign x = \"world\"\nemit \"hello\\e${x}\\e\"\n", null));
     }
 
     @Test

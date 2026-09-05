@@ -52,9 +52,9 @@ public class IOEdgeCasesTest {
     public void testRoundTripWriteThenRead() throws Exception {
         File f = new File(tmp.getRoot(), "rt.txt");
         String tmpl =
-                "p = \"" + f.getAbsolutePath() + "\"\n" +
+                "assign p = \"" + f.getAbsolutePath() + "\"\n" +
                 "emit \"hello world\\n\" to p\n" +
-                "x = read from p\n" +
+                "assign x = read from p\n" +
                 "emit x\n";
         // Note: emit-to writes to the file, then read pulls it back
         // The file is closed at template end, but read can still open it fresh
@@ -80,7 +80,7 @@ public class IOEdgeCasesTest {
 
     @Test(expected = TemplateException.class)
     public void testReadNonExistentFileFails() throws Exception {
-        String tmpl = "x = read from \"/nonexistent/path/file.xyz\"\nemit x\n";
+        String tmpl = "assign x = read from \"/nonexistent/path/file.xyz\"\nemit x\n";
         process(tmpl);
     }
 
@@ -112,7 +112,7 @@ public class IOEdgeCasesTest {
                 "list [\"foo\", \"bar\"] as f\n" +
                 "  emit \"void ${f}(void);\\n\" to \"" + h + "\"\n" +
                 "  emit \"void ${f}(void) {}\\n\" to \"" + s + "\"\n" +
-                "endlist\n" +
+                "end\n" +
                 "emit \"#endif\\n\" to \"" + h + "\"\n";
         process(tmpl);
         assertEquals("#ifndef OUT_H\n#define OUT_H\nvoid foo(void);\nvoid bar(void);\n#endif\n",
@@ -137,7 +137,7 @@ public class IOEdgeCasesTest {
         String tmpl =
                 "list (readln from \"" + f.getAbsolutePath() + "\")?filter(l -> l?trim?length > 0)?map(l -> l?upper_case) as l\n" +
                 "  emit l + \",\"\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("ALPHA,BETA,GAMMA,", process(tmpl));
     }
 

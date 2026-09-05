@@ -70,12 +70,12 @@ public class CodeFirstBitwiseTest {
 
     @Test
     public void testBitwiseNot() throws Exception {
-        assertEquals("-1", run("x = ~0\nemit x?c\n"));
+        assertEquals("-1", run("assign x = ~0\nemit x?c\n"));
     }
 
     @Test
     public void testBitwiseNotFF() throws Exception {
-        assertEquals("-256", run("x = ~0xFF\nemit x?c\n"));
+        assertEquals("-256", run("assign x = ~0xFF\nemit x?c\n"));
     }
 
     // === Left Shift ===
@@ -101,27 +101,27 @@ public class CodeFirstBitwiseTest {
 
     @Test
     public void testAndEquals() throws Exception {
-        assertEquals("15", run("x = 0xFF\nx &= 0x0F\nemit x?c\n"));
+        assertEquals("15", run("assign x = 0xFF\nassign x &= 0x0F\nemit x?c\n"));
     }
 
     @Test
     public void testOrEquals() throws Exception {
-        assertEquals("255", run("x = 0x0F\nx |= 0xF0\nemit x?c\n"));
+        assertEquals("255", run("assign x = 0x0F\nassign x |= 0xF0\nemit x?c\n"));
     }
 
     @Test
     public void testXorEquals() throws Exception {
-        assertEquals("240", run("x = 0xFF\nx ^= 0x0F\nemit x?c\n"));
+        assertEquals("240", run("assign x = 0xFF\nassign x ^= 0x0F\nemit x?c\n"));
     }
 
     @Test
     public void testLeftShiftEquals() throws Exception {
-        assertEquals("256", run("x = 1\nx <<= 8\nemit x?c\n"));
+        assertEquals("256", run("assign x = 1\nassign x <<= 8\nemit x?c\n"));
     }
 
     @Test
     public void testRightShiftEquals() throws Exception {
-        assertEquals("1", run("x = 256\nx >>= 8\nemit x?c\n"));
+        assertEquals("1", run("assign x = 256\nassign x >>= 8\nemit x?c\n"));
     }
 
     // === Operator precedence ===
@@ -143,12 +143,12 @@ public class CodeFirstBitwiseTest {
 
     @Test
     public void testLogicalAndStillWorks() throws Exception {
-        assertEquals("yes", run("if true && true\nemit \"yes\"\nendif\n"));
+        assertEquals("yes", run("if true && true\nemit \"yes\"\nend\n"));
     }
 
     @Test
     public void testLogicalOrStillWorks() throws Exception {
-        assertEquals("yes", run("if false || true\nemit \"yes\"\nendif\n"));
+        assertEquals("yes", run("if false || true\nemit \"yes\"\nend\n"));
     }
 
     // === Combined with hex literals ===
@@ -156,7 +156,7 @@ public class CodeFirstBitwiseTest {
     @Test
     public void testMaskExtraction() throws Exception {
         // Extract green channel from RGB color
-        assertEquals("128", run("color = 0x1A803C\ngreen = (color >> 8) & 0xFF\nemit green?c\n"));
+        assertEquals("128", run("assign color = 0x1A803C\nassign green = (color >> 8) & 0xFF\nemit green?c\n"));
     }
 
     @Test

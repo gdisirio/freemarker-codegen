@@ -56,14 +56,14 @@ public class CollectionBuiltInsTest {
     @Test
     public void testFirstOnCollection() throws Exception {
         File f = makeFile("data.txt", "alpha\nbeta\ngamma\n");
-        String tmpl = "lines = readln from \"" + f.getAbsolutePath() + "\"\nemit lines?first\n";
+        String tmpl = "assign lines = readln from \"" + f.getAbsolutePath() + "\"\nemit lines?first\n";
         assertEquals("alpha", process(tmpl));
     }
 
     @Test
     public void testJoinOnCollection() throws Exception {
         File f = makeFile("data.txt", "a\nb\nc\n");
-        String tmpl = "lines = readln from \"" + f.getAbsolutePath() + "\"\nemit lines?join(\",\")\n";
+        String tmpl = "assign lines = readln from \"" + f.getAbsolutePath() + "\"\nemit lines?join(\",\")\n";
         assertEquals("a,b,c", process(tmpl));
     }
 
@@ -71,10 +71,10 @@ public class CollectionBuiltInsTest {
     public void testFilterOnCollection() throws Exception {
         File f = makeFile("data.txt", "apple\nbanana\napricot\ncherry\n");
         String tmpl =
-                "lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
+                "assign lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
                 "list lines?filter(l -> l?starts_with(\"a\")) as l\n" +
                 "  emit l + \"\\n\"\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("apple\napricot\n", process(tmpl));
     }
 
@@ -82,10 +82,10 @@ public class CollectionBuiltInsTest {
     public void testMapOnCollection() throws Exception {
         File f = makeFile("data.txt", "a\nb\nc\n");
         String tmpl =
-                "lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
+                "assign lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
                 "list lines?map(l -> l?upper_case) as l\n" +
                 "  emit l\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("ABC", process(tmpl));
     }
 
@@ -93,10 +93,10 @@ public class CollectionBuiltInsTest {
     public void testTakeWhileOnCollection() throws Exception {
         File f = makeFile("data.txt", "a\nb\nSTOP\nc\nd\n");
         String tmpl =
-                "lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
+                "assign lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
                 "list lines?take_while(l -> l != \"STOP\") as l\n" +
                 "  emit l\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("ab", process(tmpl));
     }
 
@@ -104,10 +104,10 @@ public class CollectionBuiltInsTest {
     public void testDropWhileOnCollection() throws Exception {
         File f = makeFile("data.txt", "header1\nheader2\n---\na\nb\n");
         String tmpl =
-                "lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
+                "assign lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
                 "list lines?drop_while(l -> l != \"---\")?filter(l -> l != \"---\") as l\n" +
                 "  emit l + \"\\n\"\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("a\nb\n", process(tmpl));
     }
 
@@ -115,7 +115,7 @@ public class CollectionBuiltInsTest {
     public void testSequenceMaterializesCollection() throws Exception {
         File f = makeFile("data.txt", "a\nb\nc\n");
         String tmpl =
-                "lines = (readln from \"" + f.getAbsolutePath() + "\")?sequence\n" +
+                "assign lines = (readln from \"" + f.getAbsolutePath() + "\")?sequence\n" +
                 "emit lines?size?c\n";
         assertEquals("3", process(tmpl));
     }
@@ -125,10 +125,10 @@ public class CollectionBuiltInsTest {
         // Multiple chained filters/maps should still iterate the source once
         File f = makeFile("data.txt", "1\n2\n3\n4\n5\n6\n");
         String tmpl =
-                "lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
+                "assign lines = readln from \"" + f.getAbsolutePath() + "\"\n" +
                 "list lines?filter(l -> l?number % 2 == 0)?map(l -> l + \"!\") as l\n" +
                 "  emit l\n" +
-                "endlist\n";
+                "end\n";
         assertEquals("2!4!6!", process(tmpl));
     }
 }

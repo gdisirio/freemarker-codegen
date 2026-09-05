@@ -103,7 +103,7 @@ public class EmitToTest {
     public void testEmitToVariablePath() throws Exception {
         File outFile = new File(tmp.getRoot(), "via_var.txt");
         String tmpl =
-                "p = \"" + outFile.getAbsolutePath() + "\"\n" +
+                "assign p = \"" + outFile.getAbsolutePath() + "\"\n" +
                 "emit \"hello\\n\" to p\n";
         processCodeFirst(tmpl);
         assertEquals("hello\n", new String(Files.readAllBytes(outFile.toPath())));
@@ -113,7 +113,7 @@ public class EmitToTest {
     public void testEmitToFileWithInterpolation() throws Exception {
         File outFile = new File(tmp.getRoot(), "interp.txt");
         String tmpl =
-                "name = \"World\"\n" +
+                "assign name = \"World\"\n" +
                 "emit \"Hello, ${name}!\\n\" to \"" + outFile.getAbsolutePath() + "\"\n";
         processCodeFirst(tmpl);
         assertEquals("Hello, World!\n", new String(Files.readAllBytes(outFile.toPath())));

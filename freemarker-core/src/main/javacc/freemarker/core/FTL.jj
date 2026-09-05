@@ -93,6 +93,13 @@ public class FMParser {
     private int continuableDirectiveNesting;
     
     private boolean inMacro, inFunction, requireArgsSpecialVariable;
+    /**
+     * The generic block closer of code-first mode: it closes whatever block is open, and replaces the earlier family
+     * of {@code endif}, {@code endlist}, {@code endmacro}, etc. keywords. The {@code /if}-style closers remain as the
+     * explicit form, which also states, and therefore checks, what is being closed.
+     */
+    static final String CF_GENERIC_BLOCK_END = "end";
+
     boolean codeFirstMode;
     private LinkedList escapes = new LinkedList();
     private int mixedContentNesting; // for stripText
@@ -434,18 +441,38 @@ public class FMParser {
         Token t = getToken(1);
         if (t.kind == CF_END_IF || t.kind == CF_END_LIST || t.kind == CF_END_MACRO
                 || t.kind == CF_END_FUNCTION || t.kind == CF_END_SWITCH || t.kind == CF_END_SEP
+                || t.kind == CF_END_ATTEMPT || t.kind == CF_END_ITEMS
+                || t.kind == CF_END_AUTOESC || t.kind == CF_END_NOAUTOESC
                 || t.kind == EOF) {
             return true;
         }
         if (t.kind == ID) {
             String img = t.image;
             return img.equals("else") || img.equals("elseif") || img.equals("case") || img.equals("default")
-                    || img.equals("endif") || img.equals("endlist") || img.equals("endmacro")
-                    || img.equals("endfunction") || img.equals("endswitch") || img.equals("endsep")
-                    || img.equals("recover") || img.equals("endattempt")
-                    || img.equals("enditems") || img.equals("endautoesc") || img.equals("endnoautoesc");
+                    || img.equals("recover") || img.equals(CF_GENERIC_BLOCK_END);
         }
         return false;
+    }
+
+    /**
+     * Rejects an assignment that doesn't say what scope it assigns to, like {@code x = 1}.
+     *
+     * <p>Such a shorthand can only mean "namespace at the top level, local inside a macro or function", and that makes
+     * it unsafe: moving a fragment of a template into a macro then silently changes where the value is written. The
+     * scope has to be stated, which the {@code assign}, {@code local} and {@code global} keywords already do.
+     *
+     * <p>(FreeMarker's {@code #assign}/{@code #local} pair is the root cause. If it had {@code #set} for assignment
+     * and {@code #var} for block-scoped declaration instead, a scopeless assignment would simply mean {@code #set},
+     * with no dependency on where it appears. That's a change for FreeMarker itself though.)
+     */
+    private void cfRejectScopelessAssignment(Token nameTk) throws ParseException {
+        String preferred = (inMacro || inFunction) ? "local" : "assign";
+        throw new ParseException(
+                "Assignment without a scope keyword isn't supported: write \"" + preferred + " " + nameTk.image
+                + " = ...\" instead.\n"
+                + "Use \"local\" for a variable of the enclosing macro or function, \"assign\" for one of the "
+                + "template's namespace, or \"global\" for a global one.",
+                template, nameTk);
     }
 
     /**
@@ -1766,6 +1793,14 @@ TOKEN:
     <CF_END_SWITCH : "/switch">
     |
     <CF_END_SEP : "/sep">
+    |
+    <CF_END_ATTEMPT : "/attempt">
+    |
+    <CF_END_ITEMS : "/items">
+    |
+    <CF_END_AUTOESC : "/autoesc">
+    |
+    <CF_END_NOAUTOESC : "/noautoesc">
     |
     // Greater-than operators (unambiguous in code-first mode, no tag-close conflict)
     <CF_NATURAL_GT : ">">
@@ -5272,6 +5307,7 @@ TemplateElements CodeFirstContent() :
     TemplateElement[] childBuffer = null;
     int childCount = 0;
     TemplateElement elem;
+    Token scopelessAssignmentTk;
 }
 {
     (
@@ -5357,8 +5393,9 @@ TemplateElements CodeFirstContent() :
             LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("local")})
             elem = CodeFirstAssignment(Assignment.LOCAL)
             |
+            // Assignment without a scope keyword is deliberately not supported; see cfRejectScopelessAssignment.
             LOOKAHEAD(<ID> (<EQUALS> | <PLUS_EQUALS> | <MINUS_EQUALS> | <TIMES_EQUALS> | <DIV_EQUALS> | <MOD_EQUALS> | <CF_AND_EQUALS> | <CF_OR_EQUALS> | <CF_XOR_EQUALS> | <CF_LEFT_SHIFT_EQUALS> | <CF_RIGHT_SHIFT_EQUALS> | <PLUS_PLUS> | <MINUS_MINUS>))
-            elem = CodeFirstAssignment(inMacro || inFunction ? Assignment.LOCAL : Assignment.NAMESPACE)
+            scopelessAssignmentTk = <ID> { cfRejectScopelessAssignment(scopelessAssignmentTk); elem = null; }
             |
             // Macro/function call: identifier (possibly dotted) followed by arguments
             LOOKAHEAD(<ID> (<DOT> <ID>)* <OPEN_PAREN>)
@@ -5429,7 +5466,7 @@ TemplateElement CodeFirstIf() :
             ifBlock.addBlock(cblock);
         }
     ]
-    ( end = <CF_END_IF> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endif")}) end = <ID> )
+    ( end = <CF_END_IF> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         ifBlock.setLocation(template, start, end);
@@ -5493,7 +5530,7 @@ TemplateElement CodeFirstList() :
         LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("else")})
         elseOfList = CodeFirstElseOfList()
     ]
-    ( end = <CF_END_LIST> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endlist")}) end = <ID> )
+    ( end = <CF_END_LIST> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         IteratorBlock list = new IteratorBlock(
@@ -5579,11 +5616,15 @@ Macro CodeFirstMacro(boolean isFunction) :
         inMacro = inFunction = false;
     }
     (
-        ( end = <CF_END_MACRO> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endmacro")}) end = <ID> )
-        { if (isFunction) throw new ParseException("Expected /function or endfunction, not /macro.", template, end); }
+        // The generic closer is valid for both; only the explicit ones say which, and so can be wrong.
+        LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)})
+        end = <ID>
         |
-        ( end = <CF_END_FUNCTION> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endfunction")}) end = <ID> )
-        { if (!isFunction) throw new ParseException("Expected /macro or endmacro, not /function.", template, end); }
+        end = <CF_END_MACRO>
+        { if (isFunction) throw new ParseException("Expected /function or end, not /macro.", template, end); }
+        |
+        end = <CF_END_FUNCTION>
+        { if (!isFunction) throw new ParseException("Expected /macro or end, not /function.", template, end); }
     )
     [ <CF_EOL> ]
     {
@@ -5662,7 +5703,7 @@ Sep CodeFirstSep() :
     start = <ID> // "sep"
     <CF_EOL>
     children = CodeFirstContent()
-    ( end = <CF_END_SEP> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endsep")}) end = <ID> )
+    ( end = <CF_END_SEP> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         Sep result = new Sep(children);
@@ -5762,7 +5803,7 @@ TemplateElement CodeFirstSwitch() :
             }
         )
     )*
-    ( end = <CF_END_SWITCH> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals("endswitch")}) end = <ID> )
+    ( end = <CF_END_SWITCH> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         switchBlock.setLocation(template, start, end);
@@ -5997,7 +6038,7 @@ AttemptBlock CodeFirstAttempt() :
     <CF_EOL>
     children = CodeFirstContent()
     recoveryBlock = CodeFirstRecover()
-    <ID>  // "endattempt"
+    ( <CF_END_ATTEMPT> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) <ID> )
     <CF_EOL>
     {
         AttemptBlock result = new AttemptBlock(children, recoveryBlock);
@@ -6218,7 +6259,7 @@ Items CodeFirstItems() :
 
     children = CodeFirstContent()
 
-    end = <ID>  // "enditems"
+    ( end = <CF_END_ITEMS> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         breakableDirectiveNesting--;
@@ -6251,7 +6292,7 @@ AutoEscBlock CodeFirstAutoEsc() :
         recalculateAutoEscapingField();
     }
     children = CodeFirstContent()
-    end = <ID>  // "endautoesc"
+    ( end = <CF_END_AUTOESC> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         AutoEscBlock result = new AutoEscBlock(children);
@@ -6281,7 +6322,7 @@ NoAutoEscBlock CodeFirstNoAutoEsc() :
         recalculateAutoEscapingField();
     }
     children = CodeFirstContent()
-    end = <ID>  // "endnoautoesc"
+    ( end = <CF_END_NOAUTOESC> | LOOKAHEAD({getToken(1).kind == ID && getToken(1).image.equals(CF_GENERIC_BLOCK_END)}) end = <ID> )
     [ <CF_EOL> ]
     {
         NoAutoEscBlock result = new NoAutoEscBlock(children);

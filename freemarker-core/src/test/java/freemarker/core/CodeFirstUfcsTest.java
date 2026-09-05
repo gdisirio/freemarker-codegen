@@ -54,7 +54,7 @@ public class CodeFirstUfcsTest {
         String tmpl =
                 "function shout(s)\n" +
                 "  return s?upper_case\n" +
-                "endfunction\n" +
+                "end\n" +
                 "emit \"hi\"?shout()\n";
         assertEquals("HI", processCodeFirst(tmpl));
     }
@@ -64,7 +64,7 @@ public class CodeFirstUfcsTest {
         String tmpl =
                 "function suffix(s, x)\n" +
                 "  return s + x\n" +
-                "endfunction\n" +
+                "end\n" +
                 "emit \"hi\"?suffix(\"!\")\n";
         assertEquals("hi!", processCodeFirst(tmpl));
     }
@@ -74,7 +74,7 @@ public class CodeFirstUfcsTest {
         String tmpl =
                 "function wrap3(s, a, b)\n" +
                 "  return a + s + b\n" +
-                "endfunction\n" +
+                "end\n" +
                 "emit \"X\"?wrap3(\"[\", \"]\")\n";
         assertEquals("[X]", processCodeFirst(tmpl));
     }
@@ -84,10 +84,10 @@ public class CodeFirstUfcsTest {
         String tmpl =
                 "function trimmed(s)\n" +
                 "  return s?trim\n" +
-                "endfunction\n" +
+                "end\n" +
                 "function shout(s)\n" +
                 "  return s?upper_case\n" +
-                "endfunction\n" +
+                "end\n" +
                 "emit \"  hi  \"?trimmed()?shout()\n";
         assertEquals("HI", processCodeFirst(tmpl));
     }
@@ -99,7 +99,7 @@ public class CodeFirstUfcsTest {
         String tmpl =
                 "function upper_case(s)\n" +
                 "  return \"WRONG\"\n" +
-                "endfunction\n" +
+                "end\n" +
                 "emit \"hi\"?upper_case\n";
         assertEquals("HI", processCodeFirst(tmpl));
     }
@@ -111,7 +111,7 @@ public class CodeFirstUfcsTest {
         cfg.setCodeFirstMode(true);
         StringTemplateLoader loader = new StringTemplateLoader();
         loader.putTemplate("lib.ftlc",
-                "function fmt(s)\n  return \"<\" + s + \">\"\nendfunction\n");
+                "function fmt(s)\n  return \"<\" + s + \">\"\nend\n");
         loader.putTemplate("main.ftlc",
                 "import \"lib.ftlc\" as u\nemit \"hi\"?u.fmt()\n");
         cfg.setTemplateLoader(loader);
@@ -128,8 +128,8 @@ public class CodeFirstUfcsTest {
         cfg.setCodeFirstMode(true);
         StringTemplateLoader loader = new StringTemplateLoader();
         loader.putTemplate("lib.ftlc",
-                "function helper(s)\n  return s?trim\n endfunction\n" +
-                "function process(s)\n  return s?helper()?upper_case\n endfunction\n");
+                "function helper(s)\n  return s?trim\n end\n" +
+                "function process(s)\n  return s?helper()?upper_case\n end\n");
         loader.putTemplate("main.ftlc",
                 "import \"lib.ftlc\" as u\nemit \"  hi  \"?u.process()\n");
         cfg.setTemplateLoader(loader);

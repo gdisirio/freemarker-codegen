@@ -35,13 +35,13 @@ Code-first mode solves all of these:
 
 | Problem | Classic FreeMarker | Code-First |
 |---|---|---|
-| Directive syntax | `<#if cond>...</#if>` | `if cond`...`endif` |
+| Directive syntax | `<#if cond>...</#if>` | `if cond`...`end` |
 | Text output | Implicit (everything is output) | Explicit (`emit`) — no whitespace surprises |
 | Comparisons | `(x > 0)` or `x gt 0` | `x > 0` — just works |
 | Bitwise ops | Not available | `&`, `\|`, `^`, `~`, `<<`, `>>` |
 | Hex literals | Not available | `0xFF` (also enabled in classic mode) |
 | Comments | `<#-- comment -->` | `// comment` or `/* comment */` |
-| Assignment | `<#assign x = 1>` | `x = 1` |
+| Assignment | `<#assign x = 1>` | `assign x = 1` |
 
 The result is templates that **read like the code they generate**, with a clean imperative syntax that any developer can follow without learning FreeMarker's tag conventions.
 
@@ -133,15 +133,15 @@ emit "a" + " " + "b"       // string concatenation
 String literals support `${...}` interpolation:
 
 ```
-name = "Alice"
+assign name = "Alice"
 emit "Hello, ${name}!\n"
 ```
 
 Interpolation is a property of the string literal itself — it works in **any** string literal, not just in `emit`. For example in assignments, function arguments, or sequence/hash literals:
 
 ```
-greeting = "Hello, ${name}!"
-items    = ["file-${id}.txt", "backup-${id}.bak"]
+assign greeting = "Hello, ${name}!"
+assign items    = ["file-${id}.txt", "backup-${id}.bak"]
 format(prefix = "[${level}] ")
 ```
 
@@ -194,57 +194,63 @@ This makes it natural to start the content on the line after `"""` without addin
 
 ## Variables and Assignment
 
-Assignment uses bare `name = value` syntax. Scoping is automatic:
-
-- At template level: assigns to the current namespace (equivalent to `<#assign>`)
-- Inside a macro or function: assigns to local scope (equivalent to `<#local>`)
-
-```
-// Template level — namespace scope
-x = 1
-name = "World"
-items = ["a", "b", "c"]
-
-macro greet(who)
-  // Inside macro — local scope
-  greeting = "Hello, ${who}"
-  emit greeting
-/macro
-```
-
-### Explicit scope keywords
-
-Use `assign`, `local`, and `global` to explicitly control scope. This is especially useful inside macros and functions where bare assignment always goes to local scope:
-
-```
-macro compute()
-  local temp = heavyCalc()     // local to this call
-  assign result = temp * 2     // writes to template namespace
-  global cached = result       // writes to global scope
-endmacro
-```
+An assignment says which scope it writes to, with `assign`, `local` or `global`:
 
 | Keyword | Scope | Equivalent classic FTL |
 |---|---|---|
-| *(bare)* | Auto: namespace at top level, local in macro/function | — |
 | `assign` | Current namespace | `<#assign>` |
 | `local` | Local (macro/function only) | `<#local>` |
 | `global` | Global | `<#global>` |
 
+```
+// Template level
+assign x = 1
+assign name = "World"
+assign items = ["a", "b", "c"]
+
+macro greet(who)
+  local greeting = "Hello, ${who}"
+  emit greeting
+/macro
+
+macro compute()
+  local temp = heavyCalc()     // local to this call
+  assign result = temp * 2     // writes to the template namespace
+  global cached = result       // writes to the global scope
+end
+```
+
+> **Changed:** the bare `x = 1` form is no longer accepted. It could only mean "namespace at
+> the top level, local inside a macro or function", which makes moving a fragment of a template
+> into a macro silently change where the value is written. The parser now says which keyword to
+> use:
+>
+> ```
+> macro m()
+>   temp = 1        // error: Assignment without a scope keyword isn't supported:
+>                   //        write "local temp = ..." instead.
+> end
+> ```
+>
+> The underlying problem is FreeMarker's `#assign`/`#local` pair. Were there a `#set` for
+> assignment and a `#var` for block-scoped declaration instead, a scopeless assignment would
+> just mean `#set`, with no dependence on where it appears — but that's a change for FreeMarker
+> itself, not for this mode.
+
 ### Compound assignment operators
 
 ```
-x = 10
-x += 5
-x -= 2
-x *= 3
-x /= 4
-x %= 3
-x++
-x--
+assign x = 10
+assign x += 5
+assign x -= 2
+assign x *= 3
+assign x /= 4
+assign x %= 3
+assign x++
+assign x--
 ```
 
-These work with all scope keywords: `assign x += 1`, `local count++`, `global total -= n`.
+These work with all three scope keywords: `assign x += 1`, `local count++`, `global total -= n`.
 
 ---
 
@@ -270,9 +276,9 @@ The `>` and `>=` operators work without parentheses (unlike classic mode where t
 Hex integer literals are supported in **both** classic and code-first modes:
 
 ```
-x = 0xFF        // 255
-y = 0x00FF00    // 65280
-color = 0xDEAD  // 57005
+assign x = 0xFF        // 255
+assign y = 0x00FF00    // 65280
+assign color = 0xDEAD  // 57005
 ```
 
 There is no limit on the number of digits: values that fit in a signed 32-bit integer produce
@@ -309,21 +315,21 @@ All bitwise operations work on the `long` representation of numbers. Results tha
 Bitwise compound assignment operators are also supported:
 
 ```
-flags = 0xFF
-flags &= 0x0F       // AND assign
-flags |= 0x80       // OR assign
-flags ^= 0x01       // XOR assign
-flags <<= 4         // left shift assign
-flags >>= 2         // right shift assign
+assign flags = 0xFF
+assign flags &= 0x0F       // AND assign
+assign flags |= 0x80       // OR assign
+assign flags ^= 0x01       // XOR assign
+assign flags <<= 4         // left shift assign
+assign flags >>= 2         // right shift assign
 ```
 
 Example — extracting color channels from an RGB value:
 
 ```
-color = 0x1A803C
-red = (color >> 16) & 0xFF
-green = (color >> 8) & 0xFF
-blue = color & 0xFF
+assign color = 0x1A803C
+assign red = (color >> 16) & 0xFF
+assign green = (color >> 8) & 0xFF
+assign blue = color & 0xFF
 emit "R=${red?c} G=${green?c} B=${blue?c}\n"
 // Output: R=26 G=128 B=60
 ```
@@ -332,20 +338,33 @@ emit "R=${red?c} G=${green?c} B=${blue?c}\n"
 
 ## Block Directives
 
-Block directives use keyword syntax with `/keyword` closers. Every closing tag also has an `end` alias — both styles can be used interchangeably:
+Block directives use keyword syntax, and a block is closed in one of two ways:
 
-| Slash style | Keyword style |
+| Closer | Meaning |
 |---|---|
-| `/if` | `endif` |
-| `/list` | `endlist` |
-| `/macro` | `endmacro` |
-| `/function` | `endfunction` |
-| `/switch` | `endswitch` |
-| `/sep` | `endsep` |
-| `/items` | `enditems` |
-| `/attempt` | `endattempt` |
-| `/autoesc` | `endautoesc` |
-| `/noautoesc` | `endnoautoesc` |
+| `end` | Closes whatever block is open |
+| `/if`, `/list`, `/macro`, `/function`, `/switch`, `/sep`, `/items`, `/attempt`, `/autoesc`, `/noautoesc` | Closes that specific block, and is checked |
+
+These aren't two spellings of one thing. `end` is generic; `/something` states what is being
+closed, so the parser can tell you when a block was closed by mistake:
+
+```
+function f()
+  return 1
+/macro          // error: Expected /function or end, not /macro
+```
+
+`end` alone can't catch that — a mismatch only shows up later, at the outer level, with a
+vaguer message. **Prefer `/something` for anything non-trivial**, and keep `end` for short
+blocks where the opener is still on screen. The pairing is the one Ada uses (`end;` versus
+`end Foo;`); bare `end` on its own is the Pascal-family convention, and what Ruby, Lua, Julia
+and Elixir settled on too.
+
+> **Changed:** the per-block keywords `end`, `end`, `end`, `end`,
+> `end`, `end`, `end`, `end`, `end` and `end` have been
+> replaced by the single generic `end`. Ten keywords became one, and `end`, `end` and so on
+> are no longer reserved words. (`/attempt`, `/items`, `/autoesc` and `/noautoesc` were
+> documented before this change but didn't actually parse; they work now.)
 
 ### if / elseif / else
 
@@ -356,7 +375,7 @@ elseif user.pending
   emit "Your account is pending.\n"
 else
   emit "Please register.\n"
-endif
+end
 ```
 
 Conditions are terminated by end-of-line. The `>` and `>=` operators work without parentheses (unlike classic mode):
@@ -364,7 +383,7 @@ Conditions are terminated by end-of-line. The `>` and `>=` operators work withou
 ```
 if score > 90
   emit "Excellent!\n"
-endif
+end
 ```
 
 ### Multiline expressions
@@ -376,7 +395,7 @@ if (longConditionA &&
     longConditionB &&
     longConditionC)
   emit "all true\n"
-endif
+end
 ```
 
 This works for any directive that takes an expression — `if`, `elseif`, `list`, `switch`, `return`, assignments, etc.
@@ -393,7 +412,7 @@ if longConditionA && \
    longConditionB && \
    longConditionC
   emit "all true\n"
-endif
+end
 ```
 
 Both `()` and `\` can be used — choose whichever reads better in context.
@@ -403,7 +422,7 @@ Both `()` and `\` can be used — choose whichever reads better in context.
 ```
 list users as user
   emit "${user.name}\n"
-endlist
+end
 ```
 
 With key-value iteration:
@@ -411,7 +430,7 @@ With key-value iteration:
 ```
 list settings as key, value
   emit "${key} = ${value}\n"
-endlist
+end
 ```
 
 With `else` for empty lists:
@@ -421,7 +440,7 @@ list results as result
   emit "${result}\n"
 else
   emit "No results found.\n"
-endlist
+end
 ```
 
 ### sep
@@ -431,8 +450,8 @@ list items as item
   emit item
   sep
     emit ", "
-  endsep
-endlist
+  end
+end
 // Output: a, b, c
 ```
 
@@ -445,11 +464,11 @@ list users
   emit "<ul>\n"
   items as user
     emit "  <li>${user.name}</li>\n"
-  enditems
+  end
   emit "</ul>\n"
 else
   emit "<p>No users.</p>\n"
-endlist
+end
 ```
 
 ### switch / case / default
@@ -464,7 +483,7 @@ case "green"
   break
 default
   emit "#000000"
-endswitch
+end
 ```
 
 ---
@@ -477,12 +496,12 @@ endswitch
 list items as item
   if item == "skip"
     continue
-  endif
+  end
   if item == "stop"
     break
-  endif
+  end
   emit "${item}\n"
-endlist
+end
 ```
 
 ### return
@@ -492,7 +511,7 @@ Inside a function, `return` provides the return value:
 ```
 function double(n)
   return n * 2
-endfunction
+end
 ```
 
 Inside a macro, `return` exits early:
@@ -501,9 +520,9 @@ Inside a macro, `return` exits early:
 macro conditionalGreet(name)
   if !name?has_content
     return
-  endif
+  end
   emit "Hello, ${name}!\n"
-endmacro
+end
 ```
 
 ### stop
@@ -513,7 +532,7 @@ Aborts template processing with an error message:
 ```
 if !requiredParam??
   stop "Missing required parameter: requiredParam"
-endif
+end
 ```
 
 ### attempt / recover
@@ -522,11 +541,11 @@ Error handling — if the `attempt` block fails, execution continues in the `rec
 
 ```
 attempt
-  result = riskyOperation()
+  assign result = riskyOperation()
 recover
   emit "Operation failed, using default.\n"
-  result = defaultValue
-endattempt
+  assign result = defaultValue
+end
 ```
 
 ---
@@ -540,8 +559,7 @@ macro page(title, body)
   emit "<!DOCTYPE html>\n"
   emit "<html><head><title>${title}</title></head>\n"
   emit "<body>${body}</body></html>\n"
-endmacro
-
+end
 page("Home", "Welcome!")
 ```
 
@@ -550,8 +568,7 @@ Parameters can have defaults:
 ```
 macro button(label, type = "submit")
   emit "<button type=\"${type}\">${label}</button>\n"
-endmacro
-
+end
 button("Save")
 button("Cancel", "button")
 ```
@@ -564,9 +581,8 @@ function max(a, b)
     return a
   else
     return b
-  endif
-endfunction
-
+  end
+end
 emit max(10, 20)?c
 // Output: 20
 ```
@@ -577,7 +593,7 @@ Use `name(args)` syntax with positional or named arguments:
 
 ```
 greet("World")
-x = add(1, 2)
+assign x = add(1, 2)
 ```
 
 Namespace-qualified calls use dot notation:
@@ -604,8 +620,7 @@ A function can be called with `?` syntax, where the value on the left becomes th
 ```
 function shout(s)
   return s?upper_case
-endfunction
-
+end
 emit "hi"?shout()        // same as shout("hi") → "HI"
 ```
 
@@ -637,7 +652,7 @@ macro wrapper(title)
   emit "  <h2>${title}</h2>\n"
   nested
   emit "</div>\n"
-endmacro
+end
 ```
 
 `nested` can also pass loop variables back to the caller:
@@ -646,8 +661,8 @@ endmacro
 macro repeat(count)
   list 1..count as i
     nested i
-  endlist
-endmacro
+  end
+end
 ```
 
 ---
@@ -699,8 +714,8 @@ Any other expression evaluates to a string treated as a **file path**.
 ### Multi-file generation example
 
 ```
-header = "include/${name}.h"
-source = "src/${name}.c"
+assign header = "include/${name}.h"
+assign source = "src/${name}.c"
 
 emit "#ifndef ${name?upper_case}_H\n" to header
 emit "#define ${name?upper_case}_H\n" to header
@@ -709,8 +724,7 @@ emit "#include \"${name}.h\"\n" to source
 list functions as f
   emit f.prototype + ";\n" to header        // declaration in .h
   emit f.body to source                      // implementation in .c
-endlist
-
+end
 emit "#endif\n" to header
 ```
 
@@ -721,12 +735,12 @@ The `.h` and `.c` files are generated in a single pass, with related code emitte
 Two read primitives are available as expressions:
 
 ```
-text = read from "data.txt"                 // entire file as a string
-text = read from stdin                      // entire stdin as a string
+assign text = read from "data.txt"                 // entire file as a string
+assign text = read from stdin                      // entire stdin as a string
 
 list (readln from "big.csv") as line        // lazy line-by-line iteration
   emit line + "\n"
-endlist
+end
 ```
 
 | Form | Returns | Use case |
@@ -756,7 +770,7 @@ Chained pipelines stay lazy:
 ```
 list (readln from "data.csv")?drop_while(l -> l?starts_with("#"))?filter(l -> l != "") as line
   emit transform(line) + "\n"
-endlist
+end
 ```
 
 This iterates the source once, top to bottom, without ever loading the whole file.
@@ -769,7 +783,7 @@ This iterates the source once, top to bottom, without ever loading the whole fil
 If you need these, materialize explicitly with `?sequence`:
 
 ```
-all = (readln from "data.txt")?sequence       // reads ENTIRE file into memory
+assign all = (readln from "data.txt")?sequence       // reads ENTIRE file into memory
 emit all?size?c                                // works
 emit all?sort?join("\n")                       // works
 ```
@@ -783,10 +797,10 @@ Each `readln from <target>` call opens a fresh reader. Two calls on the same pat
 ```
 list (readln from "data.csv") as line     // first pass
   // validate
-endlist
+end
 list (readln from "data.csv") as line     // second pass — file reopened
   // emit
-endlist
+end
 ```
 
 Unlike output handles (which are cached for write coalescing), input handles are not cached — repeated reads of the same file are always fresh.
@@ -802,7 +816,7 @@ Reading from `stdin` ends naturally at EOF — Ctrl-D in a terminal, or end-of-p
 ```
 list readln from stdin as line
   emit line + "\n"
-endlist
+end
 // loop ends when stdin closes
 ```
 
@@ -904,7 +918,7 @@ Inside a macro invoked by `visit`, `fallback` delegates to the next namespace in
 ```
 macro @element
   fallback
-endmacro
+end
 ```
 
 ---
@@ -940,11 +954,10 @@ Controls auto-escaping within a block:
 ```
 autoesc
   emit message    // escaped according to output format
-endautoesc
-
+end
 noautoesc
   emit rawHtml    // no escaping
-endnoautoesc
+end
 ```
 
 ---
@@ -960,7 +973,7 @@ Prepends `prefix` to **every** line, then removes the trailing whitespace of eac
 unless `rightTrim` is `false` (it defaults to `true`).
 
 ```
-body = "int x;\nint y;\n"
+assign body = "int x;\nint y;\n"
 emit body?indent("    ")
 // Output:
 //     int x;
@@ -1018,7 +1031,7 @@ that the line actually starts with. A line carrying the whole prefix loses all o
 carrying only part of it loses that part; a line sharing nothing with it is untouched.
 
 ```
-body = "    int x;\n    int y;\n"
+assign body = "    int x;\n    int y;\n"
 emit body?dedent("    ")
 // Output:
 // int x;
@@ -1059,7 +1072,7 @@ Word-wraps the string to fit within `width` columns, using `firstPrefix` for the
 if both are omitted, no prefix is used. Output always ends with a newline.
 
 ```
-text = "This is a long description that should be wrapped"
+assign text = "This is a long description that should be wrapped"
 emit text?wrap(40, " * @brief ", " *          ")
 // Output:
 //  * @brief This is a long description
@@ -1102,7 +1115,7 @@ every single-line built-in available and lets you append after the padding of ea
 ```
 list code?lines as line
   emit (line + " |")?right_pad(76) + "\\\n"
-endlist
+end
 ```
 
 `?lines` (also new in FreeMarker 2.3.35) splits a string into its lines.
@@ -1124,7 +1137,7 @@ package ${package};
 // Imports
 list imports as imp
   emit "import ${imp};\n"
-endlist
+end
 emit "\n"
 
 // Class declaration
@@ -1136,7 +1149,7 @@ public class ${className} {
 // Fields
 list fields as field
   emit "    private ${field.type} ${field.name};\n"
-endlist
+end
 emit "\n"
 
 // Getters and setters
@@ -1156,8 +1169,7 @@ list fields as field
     }
 
 """
-endlist
-
+end
 emit "}\n"
 ```
 
@@ -1167,28 +1179,28 @@ emit "}\n"
 
 | Classic FTL | Code-First |
 |---|---|
-| `<#if cond>...</#if>` | `if cond`...`/if` or `endif` |
-| `<#list xs as x>...</#list>` | `list xs as x`...`/list` or `endlist` |
-| `<#macro m(a)>...</#macro>` | `macro m(a)`...`/macro` or `endmacro` |
-| `<#function f(a)>...</#function>` | `function f(a)`...`/function` or `endfunction` |
-| `<#assign x = 1>` | `x = 1` or `assign x = 1` |
-| `<#local x = 1>` | `x = 1` (inside macro) or `local x = 1` |
+| `<#if cond>...</#if>` | `if cond`...`/if` or `end` |
+| `<#list xs as x>...</#list>` | `list xs as x`...`/list` or `end` |
+| `<#macro m(a)>...</#macro>` | `macro m(a)`...`/macro` or `end` |
+| `<#function f(a)>...</#function>` | `function f(a)`...`/function` or `end` |
+| `<#assign x = 1>` | `assign x = 1` |
+| `<#local x = 1>` | `local x = 1` |
 | `<#global x = 1>` | `global x = 1` |
 | `<#return expr>` | `return expr` |
 | `<#import "x" as y>` | `import "x" as y` |
 | `<#include "x">` | `include "x"` |
-| `<#switch x>...</#switch>` | `switch x`...`/switch` or `endswitch` |
+| `<#switch x>...</#switch>` | `switch x`...`/switch` or `end` |
 | `<#nested>` | `nested` |
 | `<#stop "msg">` | `stop "msg"` |
-| `<#attempt>...<#recover>...</#attempt>` | `attempt`...`recover`...`endattempt` |
-| `<#items as x>...</#items>` | `items as x`...`enditems` |
+| `<#attempt>...<#recover>...</#attempt>` | `attempt`...`recover`...`end` |
+| `<#items as x>...</#items>` | `items as x`...`end` |
 | `<#visit node>` | `visit node` |
 | `<#recurse>` | `recurse` |
 | `<#fallback>` | `fallback` |
 | `<#flush>` | `flush` |
 | `<#setting k=v>` | `setting k = v` |
-| `<#autoesc>...</#autoesc>` | `autoesc`...`endautoesc` |
-| `<#noautoesc>...</#noautoesc>` | `noautoesc`...`endnoautoesc` |
+| `<#autoesc>...</#autoesc>` | `autoesc`...`end` |
+| `<#noautoesc>...</#noautoesc>` | `noautoesc`...`end` |
 | `${expr}` | `emit expr` |
 | `<#-- comment -->` | `// comment` or `/* comment */` |
 | `text` (direct output) | `emit "text"` or `emit """text"""` |
