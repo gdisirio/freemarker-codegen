@@ -128,7 +128,44 @@ public class OutputEolTest {
 
     @Test
     public void testDefaultOutputEol() throws Exception {
+        // Not set by default, which means that the line breaks of the static text of a classic template are output
+        // as they are in the template file.
         Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
-        assertEquals("\n", cfg.getOutputEol());
+        assertNull(cfg.getOutputEol());
+        assertFalse(cfg.isOutputEolSet());
+    }
+
+    @Test
+    public void testUnsetStillGivesLfForEscapeAndTextBlocks() throws Exception {
+        // The \e escape and the code-first text blocks fall back to a line feed when the setting isn't set, so
+        // nothing changes for them by it defaulting to unset.
+        Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
+        cfg.setCodeFirstMode(true);
+        assertEquals("a\nb", process(cfg, "emit \"a\\eb\"\n"));
+        assertEquals("x\ny\n", process(cfg, "emit \"\"\"\nx\ny\n\"\"\"\n"));
+    }
+
+    @Test
+    public void testStaticTextOfClassicTemplateIsNormalizedWhenSet() throws Exception {
+        // New: with the setting set, the template file's own line breaks don't leak into the output.
+        Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
+        cfg.setOutputEol("\r\n");
+        assertEquals("A\r\nB\r\n", process(cfg, "A\r\nB\r\n"));
+        assertEquals("A\r\nB\r\n", process(cfg, "A\nB\n"));
+    }
+
+    @Test
+    public void testStaticTextOfClassicTemplateIsKeptWhenUnset() throws Exception {
+        Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);
+        assertEquals("A\r\nB\r\n", process(cfg, "A\r\nB\r\n"));
+        assertEquals("A\nB\n", process(cfg, "A\nB\n"));
+    }
+
+    private static String process(Configuration cfg, String templateSource) throws Exception {
+        Template t = new Template(cfg.getCodeFirstMode() ? "t.ftlc" : "t.ftl",
+                new StringReader(templateSource), cfg);
+        StringWriter sw = new StringWriter();
+        t.process(new HashMap<String, Object>(), sw);
+        return sw.toString();
     }
 }

@@ -39,6 +39,29 @@ public final class TextBlock extends TemplateElement {
     private char[] text;
     private final boolean unparsed;
 
+    /**
+     * The text with its line breaks replaced with the {@code output_eol} setting value, together with the setting
+     * value it was calculated for. As that setting practically never changes while a template is executed, this
+     * one-element cache is enough to avoid recalculating the normalized text for each write.
+     *
+     * <p>This field is neither {@code volatile} nor synchronized, as {@link Template}-s (and hence the
+     * {@link TemplateElement}-s in them) can be used by multiple threads concurrently, but the cached value only
+     * depends on the immutable {@link #text} and on the setting value it's looked up with. A thread that doesn't see
+     * the value written by another thread will just recalculate it, which is harmless. What we must avoid is seeing a
+     * half-initialized object, and that's what the {@code final} fields of {@link NormalizedText} guarantee.
+     */
+    private NormalizedText normalizedText;
+
+    private static final class NormalizedText {
+        private final String eol;
+        private final char[] text;
+
+        NormalizedText(String eol, char[] text) {
+            this.eol = eol;
+            this.text = text;
+        }
+    }
+
     public TextBlock(String text) {
         this(text, false);
     }
@@ -64,8 +87,75 @@ public final class TextBlock extends TemplateElement {
     @Override
     public TemplateElement[] accept(Environment env)
     throws IOException {
-        env.getOut().write(text);
+        String outputEol = env.getOutputEol();
+        env.getOut().write(outputEol != null ? getTextWithNormalizedEol(outputEol) : text);
         return null;
+    }
+
+    /**
+     * Returns {@link #text} with all of its line breaks (LF, CRLF, or CR) replaced with {@code outputEol}, so that the
+     * line breaks that the template file happens to use don't leak into the output. The result is cached, as this is
+     * called for each write of this element.
+     */
+    private char[] getTextWithNormalizedEol(String outputEol) {
+        NormalizedText normalizedText = this.normalizedText;
+        if (normalizedText != null && normalizedText.eol.equals(outputEol)) {
+            return normalizedText.text;
+        }
+
+        char[] result = normalizeEol(text, outputEol);
+        // If nothing was replaced, we cache the original array, so that we don't hold two copies of the same content:
+        this.normalizedText = new NormalizedText(outputEol, result);
+        return result;
+    }
+
+    /**
+     * Replaces all line breaks (LF, CRLF, or CR) in {@code text} with {@code outputEol}; returns {@code text} itself
+     * if there was nothing to replace.
+     */
+    private static char[] normalizeEol(char[] text, String outputEol) {
+        int len = text.length;
+
+        // First we check if there's anything to do at all, so that in the common case where the template file already
+        // uses the wanted line breaks, we neither allocate nor copy anything:
+        boolean needsReplacement = false;
+        for (int i = 0; i < len; i++) {
+            char c = text[i];
+            if (c == '\r') {
+                needsReplacement = true;
+                break;
+            }
+            if (c == '\n') {
+                // A lone LF only needs replacement if that's not what we want to output anyway:
+                if (!outputEol.equals("\n")) {
+                    needsReplacement = true;
+                    break;
+                }
+            }
+        }
+        if (!needsReplacement) {
+            return text;
+        }
+
+        StringBuilder sb = new StringBuilder(len + 16);
+        for (int i = 0; i < len; i++) {
+            char c = text[i];
+            if (c == '\r') {
+                sb.append(outputEol);
+                // Skip the LF of a CRLF, as the two together are a single line break:
+                if (i + 1 < len && text[i + 1] == '\n') {
+                    i++;
+                }
+            } else if (c == '\n') {
+                sb.append(outputEol);
+            } else {
+                sb.append(c);
+            }
+        }
+
+        char[] result = new char[sb.length()];
+        sb.getChars(0, sb.length(), result, 0);
+        return result;
     }
 
     @Override

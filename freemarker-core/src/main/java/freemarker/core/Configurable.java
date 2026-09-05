@@ -68,6 +68,7 @@ import freemarker.template._TemplateAPI;
 import freemarker.template._VersionInts;
 import freemarker.template.utility.CollectionUtils;
 import freemarker.template.utility.NullArgumentException;
+import freemarker.template.utility.SecurityUtilities;
 import freemarker.template.utility.StringUtil;
 
 /**
@@ -499,9 +500,6 @@ public class Configurable {
         logTemplateExceptions = _TemplateAPI.getDefaultLogTemplateExceptions(incompatibleImprovements);
         properties.setProperty(LOG_TEMPLATE_EXCEPTIONS_KEY, logTemplateExceptions.toString());
 
-        // outputEol has a non-null default ("\n") which is also exposed via getSetting()
-        properties.setProperty(OUTPUT_EOL_KEY, "\n");
-        
         // outputEncoding and urlEscapingCharset defaults to null,
         // which means "not specified"
 
@@ -1571,19 +1569,42 @@ public class Configurable {
     }
 
     /**
-     * Sets the end-of-line string used for the {@code \e} escape sequence and
-     * for code-first text block normalization.
+     * Sets the end-of-line (line break) string that the template output should use, or {@code null} (the default) to
+     * not prescribe any. This affects three things:
      *
-     * <p>Defaults to {@code "\n"}.
+     * <ul>
+     *   <li>The <code>\e</code> escape of string literals, which is resolved to this value. Unlike
+     *       <code>\n</code>, which always gives a line feed (U+000A), <code>\e</code> gives whatever the output
+     *       should use. If this setting is {@code null}, <code>\e</code> gives a line feed.
+     *   <li>The line breaks of the static text of the template (the text outside <code>${...}</code> and FTL tags).
+     *       If this setting is non-{@code null}, they are all replaced with this value, and so the line breaks that
+     *       the template file happens to use don't leak into the output. If this setting is {@code null}, they are
+     *       output as they are in the template file.
+     *   <li>The line breaks inside code-first text blocks (<code>emit """ ... """</code>), which are always
+     *       normalized: to this value if it's set, and to a line feed otherwise. Unlike with the static text of a
+     *       classic template there's no "leave as is" option there, as a text block is content that was written to
+     *       be emitted, not the template's own layout.
+     * </ul>
+     *
+     * <p>Note that the values inserted by <code>${...}</code> are never affected; this setting is about the template,
+     * not about the data.
+     *
+     * <p>Usually you set this to {@code "\n"} or {@code "\r\n"}. The value {@code "JVM default"} (case
+     * insensitive) can also be used, which will be replaced with the line separator of the Java environment when this
+     * setter is called. Prefer specifying the line break explicitly though, as then the output doesn't depend on
+     * which machine the template was executed on, which matters if the output is stored in a version control system,
+     * for example.
      *
      * @since 2.3.35
      */
     public void setOutputEol(String outputEol) {
-        if (outputEol == null) {
-            throw new IllegalArgumentException("outputEol cannot be null");
-        }
         this.outputEol = outputEol;
-        properties.setProperty(OUTPUT_EOL_KEY, outputEol);
+        // java.util.Properties doesn't allow null value!
+        if (outputEol != null) {
+            properties.setProperty(OUTPUT_EOL_KEY, outputEol);
+        } else {
+            properties.remove(OUTPUT_EOL_KEY);
+        }
         outputEolSet = true;
     }
 
@@ -1595,7 +1616,18 @@ public class Configurable {
     public String getOutputEol() {
         return outputEolSet
                 ? outputEol
-                : (parent != null ? parent.getOutputEol() : "\n");
+                : (parent != null ? parent.getOutputEol() : null);
+    }
+
+    /**
+     * The value of {@link #getOutputEol()}, or {@code "\n"} if that's {@code null}. This is what the
+     * <code>\e</code> escape and the code-first text blocks are resolved to.
+     *
+     * @since 2.3.35
+     */
+    String getEffectiveOutputEol() {
+        String outputEol = getOutputEol();
+        return outputEol != null ? outputEol : "\n";
     }
 
     /**
@@ -2857,7 +2889,13 @@ public class Configurable {
                                             value, CFormat.class, false, _SettingEvaluationEnvironment.getCurrent()));
                 }
             } else if (OUTPUT_EOL_KEY_SNAKE_CASE.equals(name) || OUTPUT_EOL_KEY_CAMEL_CASE.equals(name)) {
-                setOutputEol(value);
+                if (JVM_DEFAULT.equalsIgnoreCase(value)) {
+                    setOutputEol(SecurityUtilities.getSystemProperty("line.separator", "\n"));
+                } else if (NULL.equals(value)) {
+                    setOutputEol(null);
+                } else {
+                    setOutputEol(value);
+                }
             } else if (OUTPUT_ENCODING_KEY_SNAKE_CASE.equals(name) || OUTPUT_ENCODING_KEY_CAMEL_CASE.equals(name)) {
                 setOutputEncoding(value);
             } else if (URL_ESCAPING_CHARSET_KEY_SNAKE_CASE.equals(name)

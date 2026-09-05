@@ -832,7 +832,7 @@ Use `\e` in string literals to produce the configured output EOL. Unlike `\n` (w
 emit "line1\eline2\e"
 ```
 
-With the default `output_eol` (which is `"\n"`), this produces `line1\nline2\n`. With `output_eol` set to `"\r\n"`, it produces `line1\r\nline2\r\n`.
+With `output_eol` unset (the default), this produces `line1\nline2\n`. With `output_eol` set to `"\r\n"`, it produces `line1\r\nline2\r\n`.
 
 | Escape | Meaning |
 |---|---|
@@ -845,7 +845,21 @@ Line endings inside text blocks (`emit """..."""`) are automatically normalized 
 
 ### Configuring `output_eol`
 
-The default is `"\n"`. To change it:
+`output_eol` is **unset by default**, which means FreeMarker doesn't prescribe any line ending. Setting it
+affects three things:
+
+| | `output_eol` unset (default) | `output_eol` set |
+|---|---|---|
+| `\e` in a string literal | `\n` | the configured value |
+| Text blocks (`emit """..."""`) | normalized to `\n` | normalized to the configured value |
+| Static text of a **classic** `.ftl` | left as the template file has it | normalized to the configured value |
+
+The last row is the only one that behaves differently depending on whether the setting is set, and it
+doesn't arise in code-first mode at all: a `.ftlc` file has no static text, since every character of output
+comes from an `emit`.
+
+Values inserted by `${...}` are never affected — this setting is about the template, not about the data.
+Neither is `\n`, which always produces a line feed; that distinction is the point of having both.
 
 **Via configuration (Java):**
 
@@ -859,7 +873,13 @@ cfg.setOutputEol("\r\n");  // Windows line endings
 setting output_eol = "\r\n"
 ```
 
-The `\e` escape and text block normalization both work in classic mode too — only the text block normalization is code-first specific.
+The value `"JVM default"` is also accepted, resolving to the platform's line separator. Prefer naming the
+line ending explicitly: with `"JVM default"` the same template and data produce different bytes on
+different machines, which shows up as line-ending churn if the generated files are committed to version
+control.
+
+The `\e` escape and the static-text normalization both work in classic mode too — only the text block
+normalization is code-first specific.
 
 ---
 

@@ -106,7 +106,7 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
     TemplateModel _eval(Environment env) throws TemplateException {
         if (dynamicValue == null) {
             if (env != null) {
-                String outputEol = env.getOutputEol();
+                String outputEol = env.getEffectiveOutputEol();
                 String result = value;
                 if (normalizeNewlinesToOutputEol) {
                     result = stripLeadingNewline(result);
@@ -127,7 +127,7 @@ final class StringLiteral extends Expression implements TemplateScalarModel {
             StringBuilder plainTextResult = null;
             TemplateMarkupOutputModel<?> markupResult = null;
             
-            String outputEol = env != null ? env.getOutputEol() : "\n";
+            String outputEol = env != null ? env.getEffectiveOutputEol() : "\n";
             boolean isFirstPart = true;
             for (Object part : dynamicValue) {
                 Object calcedPart;
